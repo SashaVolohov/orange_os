@@ -41,6 +41,41 @@ jne detecting_ram
 
 mov [1900h], di
 
+check_popcnt:
+    pushfd
+    pop eax
+    mov ecx, eax
+    xor eax, 1 shl 21
+    push eax
+    popfd
+    pushfd
+    pop eax
+    push ecx
+    popfd
+    xor eax, ecx
+    jz .no_cpuid
+
+    mov eax, 1
+    cpuid
+
+    bt ecx, 23
+    jnc .no_popcnt
+
+    jmp set_videomode
+
+.no_cpuid:
+    mov bp, no_cpuid_text
+    call print_line_16
+    cli
+    hlt
+.no_popcnt:
+    mov bp, no_popcnt_text
+    call print_line_16
+    cli
+    hlt
+
+set_videomode:
+
 mov ax, 4F02h
 mov bx, [vbe_mode]
 or cx, 4000h
@@ -137,6 +172,8 @@ ret
 
 mode_set_error_text db "FATAL ERROR: Cannot set 800x600x32 video mode.",0
 failed_to_get_ram_count db "FATAL ERROR: Cannot get count of RAM.",0
+no_cpuid_text db "FATAL ERROR: Your processor doesn't support CPUID instruction. The system can not continue.",0
+no_popcnt_text db "FATAL ERROR: Your processor doesn't support POPCNT(SSE 4.2) instruction. The system can not continue.",0
 small_low_memory_text db "FATAL ERROR: OrangeOS has not found enough memory. 1MB required to run OrangeOS",0
 kernel_loaded db "OrangeOS Kernel: starting...",0
 

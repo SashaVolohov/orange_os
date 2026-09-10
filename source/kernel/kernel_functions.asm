@@ -221,6 +221,128 @@ pop rbx
 
 ret
 
+get_string_from_int_64: ; Input: rbx - 64-bit int
+                        ; Output: rax - pointer to formatted string
+push rbx
+push r12
+push rcx
+push rdx
+push r15
+push r14
+push r13
+push r10
+push r9
+push r11
+
+mov r15, get_string_from_int_64_string
+add r15, 2
+
+mov r12, get_string_from_int_64_string
+add r12, 18
+
+mov cl, 60
+
+continue_string_from_int_64:
+
+mov r11, rbx
+shr r11, cl
+and r11, 0Fh
+
+mov rdx, codes_16_sc
+add rdx, r11
+
+mov r14b, [rdx]
+mov [r15], r14b
+
+add r15, 1
+sub cl, 4
+
+cmp r15, r12
+je end_string_from_int_64
+jmp continue_string_from_int_64
+
+end_string_from_int_64:
+
+mov rax, get_string_from_int_64_string
+
+pop r11
+pop r9
+pop r10
+pop r13
+pop r14
+pop r15
+pop rdx
+pop rcx
+pop r12
+pop rbx
+
+ret
+
+get_10_string_from_int_64: ; Input: rbx - 64-bit int
+                        ; Output: rax - pointer to formatted string
+
+push rbx
+push r12
+push rcx
+push rdx
+push r15
+push r14
+push r13
+push r10
+push r9
+push r11
+
+
+mov rdx, 0
+mov rax, rbx
+mov cx, 0
+
+continue_10_string:
+
+mov r10, 10
+div r10
+
+push rdx
+mov rdx, 0
+add cx, 1
+
+cmp rax, 0
+jne continue_10_string
+
+mov rax, string_10
+
+final_10_string:
+
+pop rdx
+add rdx, 48
+mov [rax], rdx
+
+add rax, 1
+
+sub cx, 1
+
+cmp cx, 0
+jne final_10_string
+
+mov [rax], byte 0
+
+mov rax, string_10
+
+pop r11
+pop r9
+pop r10
+pop r13
+pop r14
+pop r15
+pop rdx
+pop rcx
+pop r12
+pop rbx
+
+ret
+
+string_10 db "00000000000000000000",0
+
 format_string_with_32_int: ; r15d - int32 to paste, r14 - string to format, r13 - where start format
 
 push rbx
@@ -258,6 +380,109 @@ pop rbx
 
 ret
 
+format_string_with_64_int: ; r15 - int32 to paste, r14 - string to format, r13 - where start format
+
+push rbx
+push rdx
+push rcx
+push rax
+push r15
+push r14
+push r13
+
+mov rbx, r15
+call get_string_from_int_64
+
+mov rbx, r14
+add rbx, r13
+mov rdx, 0
+
+copy_efer_64:
+mov cl, [rax]
+mov [rbx], cl
+add rbx, 1
+add rax, 1
+add rdx, 1
+
+cmp rdx, 18
+jne copy_efer_64
+
+pop r13
+pop r14
+pop r15
+pop rax
+pop rcx
+pop rdx
+pop rbx
+
+ret
+
+format_10_string_with_64_int: ; r15 - int32 to paste, r14 - string to format, r13 - where start format
+
+push rbx
+push rdx
+push rcx
+push rax
+push r15
+push r14
+push r13
+push r9
+push r10
+
+mov rbx, r15
+call get_10_string_from_int_64
+
+mov rbx, r14
+add rbx, r13
+mov rdx, 0
+
+copy_10_efer_64:
+mov cl, [rax]
+
+cmp cl, 0
+je format_10_finish
+
+mov [rbx], cl
+add rbx, 1
+add rax, 1
+add rdx, 1
+
+; rdx счётчик
+jmp copy_10_efer_64
+
+format_10_finish:
+
+mov r10, r14
+add r10, r13
+add r10, 20
+
+format_10_finish_cycle:
+
+mov cl, [r10]
+mov [rbx], cl
+add rbx, 1
+add rdx, 1
+
+add r10, 1
+
+cmp cl, 0
+je format_10_final
+jmp format_10_finish_cycle
+
+format_10_final:
+
+pop r10
+pop r9
+pop r13
+pop r14
+pop r15
+pop rax
+pop rcx
+pop rdx
+pop rbx
+
+ret
+
 print_format_string_with_32_int: ; r15d - int32 to paste, r14 - string to format, r13 - where start format, r12d - x, r11d - y, cl - R, bh - G, bl - B, ch - alpha
 
 push r15
@@ -278,5 +503,42 @@ pop r15
 
 ret
 
+print_format_string_with_64_int: ; r15 - int32 to paste, r14 - string to format, r13 - where start format, r12d - x, r11d - y, cl - R, bh - G, bl - B, ch - alpha
+
+push r15
+push r14
+push r13
+
+call format_string_with_64_int
+
+mov r15d, r12d
+mov r13, r14
+mov r14d, r11d
+call draw_text
+
+pop r13
+pop r14
+pop r15
+
+ret
+
+sleep_ticks: ; rcx - tick count
+    push rax
+    push rbx
+    
+    mov rbx, [timer_ticks]
+    add rbx, rcx
+
+.wait_loop:
+    hlt
+    mov rax, [timer_ticks]
+    cmp rax, rbx
+    jb .wait_loop
+
+    pop rbx
+    pop rax
+ret
+
 get_string_from_int_32_string db "0x00000000",0
+get_string_from_int_64_string db "0x0000000000000000",0
 codes_16_sc db "0123456789ABCDEF"

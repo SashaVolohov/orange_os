@@ -49,8 +49,11 @@ mov ecx, 256
 make_page_entries:
 
 stosd
+xor edx, edx
+xchg eax, edx
+stosd
+xchg eax, edx
 
-add edi, 4
 add eax, 1000h
 loop make_page_entries
 

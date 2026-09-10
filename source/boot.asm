@@ -2,6 +2,14 @@ org 7c00h
 
 start:
 
+mov ax, 0
+mov es, ax
+mov ds, ax
+
+jmp 0000h:continue_start
+
+continue_start:
+
 mov [loading_drive], dl
 
 mov ah, 00h
@@ -13,8 +21,6 @@ mov bh, 0
 mov dh, 0
 mov dl, [console_line]
 int 10h
-
-mov [di], dword "VBE2"
 
 mov al, 00h
 mov ah, 4Fh
@@ -72,19 +78,39 @@ jmp video_found
 jmp while_loop
 
 search_ended:
-
-mov ah, 02h
-mov dl, [loading_drive]
-mov dh, 0
-mov ch, 0
+mov ax, 0x0000
+mov es, ax
+mov bx, 0x8000
 mov cl, 2
-mov al, 31
-mov bx, 3000h
-int 13h
+mov ch, 0
+mov dh, 0
+mov dl, [loading_drive]
 
-cmp ah,00h
-je kernel_loaded
-jmp kernel_load_error
+mov bp, 41
+
+load_kernel_loop:
+mov ah, 02h
+mov al, 1
+int 13h
+jc kernel_load_error
+
+add bx, 0x200
+dec bp
+jz kernel_loaded
+
+inc cl
+cmp cl, 18
+jbe load_kernel_loop
+
+mov cl, 1
+
+inc dh
+cmp dh, 2
+jne load_kernel_loop
+
+mov dh, 0
+inc ch
+jmp load_kernel_loop
 
 kernel_loaded:
 
@@ -93,7 +119,7 @@ mov dh, [console_line]
 mov cx, [vbe_mode]
 mov esi, [di+28h]
 
-jmp 3000h
+jmp 8000h
 
 kernel_load_error:
 

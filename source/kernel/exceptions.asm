@@ -1,3 +1,8 @@
+MASTER_PIC_CMD  equ 0x20
+MASTER_PIC_DATA equ 0x21
+SLAVE_PIC_CMD   equ 0xA0
+SLAVE_PIC_DATA  equ 0xA1
+
 use64
 
 align 8;
@@ -33,6 +38,54 @@ dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
 dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
 
 dw page_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw irq0_timer_handler, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw irq1_keyboard_handler, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw general_protection_fault, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
+
+dw fdc_irq_handler, 08h, 8E00h, 0000h, 0000h, 0000h, 0000h, 0000h;
 
 label IDT_SIZE at $-IDT
 
@@ -138,3 +191,28 @@ bsod_r10 db 'R10: 0x0000000000000000, R11: 0x0000000000000000',0
 bsod_r12 db 'R12: 0x0000000000000000, R13: 0x0000000000000000',0
 bsod_r14 db 'R14: 0x0000000000000000, R15: 0x0000000000000000',0
 bsod_rflags db 'RFLAGS: 0x0000000000000000',0
+
+init_pic:
+    mov al, 0x11
+    out MASTER_PIC_CMD, al
+    out SLAVE_PIC_CMD, al
+
+    mov al, 0x20
+    out MASTER_PIC_DATA, al
+    mov al, 0x28
+    out SLAVE_PIC_DATA, al
+
+    mov al, 0x04
+    out MASTER_PIC_DATA, al
+    mov al, 0x02
+    out SLAVE_PIC_DATA, al
+
+    mov al, 0x01
+    out MASTER_PIC_DATA, al
+    out SLAVE_PIC_DATA, al
+
+    mov al, 10111100b
+    out MASTER_PIC_DATA, al
+    mov al, 0xFF
+    out SLAVE_PIC_DATA, al
+ret
