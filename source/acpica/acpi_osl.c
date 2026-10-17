@@ -6,6 +6,8 @@
 #define ACPI_DISASSEMBLER_OFF
 #endif
 
+#define _COMPONENT ACPI_OS_SERVICES
+
 #define ACPI_STRCPY(d,s)        strcpy(d,s)
 #define ACPI_STRNCPY(d,s,n)     strncpy(d,s,n)
 #define ACPI_STRCAT(d,s)        strcat(d,s)
@@ -30,9 +32,25 @@ extern uint8_t  inb(uint16_t port);
 extern uint16_t inw(uint16_t port);
 extern uint32_t inl(uint16_t port);
 
+void Hold();
+void kprintf(int x, int y, unsigned char r, unsigned char g, unsigned char b, unsigned char alpha, const char *fmt, ...);
+
+typedef struct {
+    UINT32 max_units;
+    UINT32 initial_units;
+    UINT32 current_units;
+} acpi_sem_t;
+
+typedef struct {
+    int locked;
+} acpi_lock_t;
+
 extern uint64_t acpi_rsdp_addr;
 
 void print_text(const char *str, int x, int y, unsigned char r, unsigned char g, unsigned char b, unsigned char alpha);
+
+static uint8_t acpi_test_buffer[65536];
+static size_t acpi_buffer_offset = 0;
 
 uint64_t acpi_virt_cursor = 0xFFFF800010000000;
 
@@ -55,46 +73,36 @@ ACPI_PHYSICAL_ADDRESS AcpiOsGetRootPointer(void) {
     return 0; 
 }
 
-void *AcpiOsAllocate(ACPI_SIZE Size)
+void *AcpiOsAllocate (ACPI_SIZE Size) {
+    void *raw = kmalloc(Size + 16); 
+    if (!raw) return NULL;
+
+    void *aligned = (void *)(((uintptr_t)raw + 15) & ~15);
+    
+    if (aligned == raw) {
+        aligned = (void *)((uintptr_t)aligned + 16);
+    }
+
+    ((void **)aligned)[-1] = raw;
+
+    memset(aligned, 0, Size);
+    return aligned;
+}
+
+void AcpiOsFree (void *Memory) {
+    if (!Memory) return;
+    void *raw = ((void **)Memory)[-1];
+    kfree(raw);
+}
+
+/*void *AcpiOsAllocate(ACPI_SIZE Size)
 {
     uint64_t clean_size = (uint64_t)Size; 
     void* ptr = NULL;
 
     if (clean_size == 0) return NULL;
 
-    asm volatile (
-        "push %%rbx\n\t"
-        "push %%r12\n\t"
-        "push %%r13\n\t"
-        "push %%r14\n\t"
-        "push %%r15\n\t"
-        
-        "xor %%rdi, %%rdi\n\t"
-        "mov %[size], %%rdi\n\t" 
-        
-        "call kmalloc\n\t"       
-        "mov %%rax, %[ptr]\n\t"   
-        
-        "pop %%r15\n\t"
-        "pop %%r14\n\t"
-        "pop %%r13\n\t"
-        "pop %%r12\n\t"
-        "pop %%rbx"
-        : [ptr] "=r" (ptr)
-        : [size] "r" (clean_size)
-        : "rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "memory"
-    );
-
-    if (ptr != NULL) {
-        asm volatile (
-            "cld\n\t"
-            "xor %%al, %%al\n\t"
-            "rep stosb"
-            :
-            : "D"(ptr), "c"(clean_size)
-            : "al", "memory"
-        );
-    }
+    ptr = kmalloc(clean_size);
 
     if(ptr == 0) {
         asm volatile("ud2");
@@ -105,9 +113,7 @@ void *AcpiOsAllocate(ACPI_SIZE Size)
 
 void AcpiOsFree(void* Memory) {
     kfree(Memory);
-}
-
-uint64_t acpi_map_counter = 0;
+}*/
 
 #define ACPI_MAX_MAP_SLOTS 32
 
@@ -198,22 +204,85 @@ ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
     return AE_OK;
 }
 
-ACPI_STATUS AcpiOsCreateLock(ACPI_SPINLOCK *OutHandle) {
-    *OutHandle = (ACPI_SPINLOCK)1;
+ACPI_STATUS
+AcpiOsCreateLock (
+    ACPI_SPINLOCK           *OutLockHandle)
+{
+    if (!OutLockHandle) return AE_BAD_PARAMETER;
+    
+    acpi_lock_t *lock = kmalloc(sizeof(acpi_lock_t));
+    if (!lock) return AE_NO_MEMORY;
+    
+    lock->locked = 0;
+    *OutLockHandle = (ACPI_SPINLOCK)lock;
     return AE_OK;
 }
 
-void AcpiOsDeleteLock(ACPI_SPINLOCK Handle) {}
-ACPI_CPU_FLAGS AcpiOsAcquireLock(ACPI_SPINLOCK Handle) { return 0; }
-void AcpiOsReleaseLock(ACPI_SPINLOCK Handle, ACPI_CPU_FLAGS Flags) {}
+void AcpiOsDeleteLock (ACPI_SPINLOCK Handle) {
+    if (Handle) kfree(Handle);
+}
 
-ACPI_STATUS AcpiOsCreateSemaphore(UINT32 MaxUnits, UINT32 InitialUnits, ACPI_SEMAPHORE *OutHandle) {
-    *OutHandle = (ACPI_SEMAPHORE)1;
+ACPI_CPU_FLAGS AcpiOsAcquireLock (ACPI_SPINLOCK Handle) { return 0; }
+void AcpiOsReleaseLock (ACPI_SPINLOCK Handle, ACPI_CPU_FLAGS Flags) {}
+
+ACPI_STATUS
+AcpiOsCreateSemaphore (
+    UINT32                  MaxUnits,
+    UINT32                  InitialUnits,
+    ACPI_SEMAPHORE          *OutHandle)
+{
+    if (!OutHandle) return AE_BAD_PARAMETER;
+
+    acpi_sem_t *sem = kmalloc(sizeof(acpi_sem_t));
+    if (!sem) return AE_NO_MEMORY;
+
+    sem->max_units = MaxUnits;
+    sem->initial_units = InitialUnits;
+    sem->current_units = InitialUnits;
+
+    *OutHandle = (ACPI_SEMAPHORE)sem;
     return AE_OK;
 }
-ACPI_STATUS AcpiOsDeleteSemaphore(ACPI_SEMAPHORE Handle) { return AE_OK; }
-ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle, UINT32 Units, UINT16 Timeout) { return AE_OK; }
-ACPI_STATUS AcpiOsSignalSemaphore(ACPI_SEMAPHORE Handle, UINT32 Units) { return AE_OK; }
+
+ACPI_STATUS
+AcpiOsDeleteSemaphore (
+    ACPI_SEMAPHORE          Handle)
+{
+    if (!Handle) return AE_BAD_PARAMETER;
+    kfree(Handle);
+    return AE_OK;
+}
+
+ACPI_STATUS
+AcpiOsWaitSemaphore (
+    ACPI_SEMAPHORE          Handle,
+    UINT32                  Units,
+    UINT16                  Timeout)
+{
+    if (!Handle) return AE_BAD_PARAMETER;
+    
+    acpi_sem_t *sem = (acpi_sem_t *)Handle;
+    
+    if (sem->current_units >= Units) {
+        sem->current_units -= Units;
+        return AE_OK;
+    }
+    
+    return AE_OK;
+}
+
+ACPI_STATUS
+AcpiOsSignalSemaphore (
+    ACPI_SEMAPHORE          Handle,
+    UINT32                  Units)
+{
+    if (!Handle) return AE_BAD_PARAMETER;
+    
+    acpi_sem_t *sem = (acpi_sem_t *)Handle;
+    sem->current_units += Units;
+    
+    return AE_OK;
+}
 
 ACPI_THREAD_ID AcpiOsGetThreadId(void) {
     return 1;

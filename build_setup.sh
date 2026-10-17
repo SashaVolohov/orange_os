@@ -15,13 +15,21 @@ cd source/kernel
 ./build_kernel.sh
 cd ../..
 
-ld -n -T linker.ld obj/kernel.o source/acpica/build_obj/*.o source/kernel/build_obj/*.o -o obj/kernel.elf --no-warn-rwx-segments
+cd source/uefi
+make
+cd ../..
 
-objdump -d -M intel obj/kernel.elf > full_kernel.txt
+cd source/apps
+./build_apps.sh
+cd ../..
+
+ld -n -T linker.ld obj/kernel.o source/acpica/build_obj/*.o source/kernel/build_obj/*.o source/apps/build_obj/*.o -o obj/kernel.elf --no-warn-rwx-segments
 
 objcopy -O binary obj/kernel.elf obj/kernel.bin
 
 mkdir -p iso_root
+mkdir -p iso_root/EFI
+mkdir -p iso_root/EFI/BOOT
 mkdir -p iso_root/boot
 
 cp obj/boot_cd.bin iso_root/boot/boot_cd.bin 
@@ -33,14 +41,15 @@ cp obj/boot.bin iso_root/_BOOTMBR
 cp obj/vbr_sector0.bin iso_root/_VBRSEC0
 cp obj/vbr_stage2.bin iso_root/_VBRSEC1
 
-xorriso -as mkisofs \
-  -R -J \
-  -V "ORANGEOS" \
-  -b boot/boot_cd.bin \
-  -no-emul-boot \
-  -boot-load-size 4 \
-  -boot-info-table \
-  -o orangeos.iso \
-  iso_root
+cp source/uefi/BOOTX64.EFI iso_root/EFI/BOOT/
+
+dd if=/dev/zero of=iso_root/boot/efiboot.img bs=1k count=1440
+mformat -i iso_root/boot/efiboot.img -f 1440 ::
+mmd -i iso_root/boot/efiboot.img ::/EFI
+mmd -i iso_root/boot/efiboot.img ::/EFI/BOOT
+
+mcopy -i iso_root/boot/efiboot.img source/uefi/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
+
+xorriso -as mkisofs -R -J -V "ORANGEOS" -b boot/boot_cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table -eltorito-alt-boot -e boot/efiboot.img -no-emul-boot -o orangeos.iso iso_root
 
 rm -rf iso_root

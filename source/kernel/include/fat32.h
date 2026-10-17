@@ -19,7 +19,6 @@ typedef struct {
     uint32_t hidden_sectors;
     uint32_t total_sectors_32;
 
-    // Расширение FAT32 (EBPB)
     uint32_t sectors_per_fat_32;
     uint16_t ext_flags;
     uint16_t fs_version;

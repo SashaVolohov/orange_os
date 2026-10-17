@@ -161,6 +161,10 @@
  *
  * Note: The order of these include files is important.
  */
+
+void Hold();
+void kprintf(int x, int y, unsigned char r, unsigned char g, unsigned char b, unsigned char alpha, const char *fmt, ...);
+
 #include "platform/acenv.h"     /* Environment-specific items */
 #include "actypes.h"            /* ACPICA data types and structures */
 #include "platform/acenvex.h"   /* Extra environment-specific items */

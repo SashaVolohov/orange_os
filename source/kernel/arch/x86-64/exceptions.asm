@@ -10,6 +10,8 @@ section '.data' writeable align 16
 public idt_pointer
 public idt_table
 public KeBugMemoryManagement
+public KeBugACPIError
+public KeBugInaccesibleBootDevice
 
 align 16
 idt_pointer:
@@ -659,6 +661,7 @@ mov ch, 0FFh
 call draw_text
 
 acpi_error:
+KeBugACPIError:
 
 mov [interrupt_number], 21
 
@@ -668,6 +671,27 @@ call save_reg
 call clear_screen
 
 mov r13, bsod_21_text
+mov r15d, 0
+mov r14d, 0
+mov cl, 0FFh
+mov bh, 0FFh
+mov bl, 0FFh
+mov ch, 0FFh
+call draw_text
+
+
+jmp draw_dump
+
+KeBugInaccesibleBootDevice:
+
+mov [interrupt_number], 22
+
+cli
+
+call save_reg
+call clear_screen
+
+mov r13, bsod_22_text
 mov r15d, 0
 mov r14d, 0
 mov cl, 0FFh
@@ -818,6 +842,14 @@ mov r15d, 0
 mov r14d, 158
 call draw_text
 
+mov rdi, 0
+mov rsi, 0
+mov edi, dword [lfb_mouse_addr]
+mov esi, dword [lfb_buffer_addr]
+mov rdx, 480000
+
+call flip_buffers
+
 jmp $
 
 bsod_00_text db '*** STOP: 0x00000000 (INT_DIVIDE_BY_ZERO)',0
@@ -849,6 +881,7 @@ bsod_1D_text db '*** STOP: 0x0000001D (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_1F_text db '*** STOP: 0x0000001F (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_20_text db '*** STOP: 0x00000020 (MEMORY_MANAGEMENT)',0
 bsod_21_text db '*** STOP: 0x00000021 (ACPI_BIOS_ERROR)',0
+bsod_22_text db '*** STOP: 0x00000022 (INACCESSIBLE_BOOT_DEVICE)',0
 bsod_efer db 'EFER: 0x00000000',0
 bsod_rax db 'RAX: 0x0000000000000000, RBX: 0x0000000000000000',0
 bsod_rcx db 'RCX: 0x0000000000000000, RDX: 0x0000000000000000',0

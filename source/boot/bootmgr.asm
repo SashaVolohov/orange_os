@@ -170,7 +170,8 @@ mov [rbx + TSS64_rsp0], rax
 call alloc_page
 add rax, 4096
 and rax, not 0xF
-mov [rbx + TSS64_ist1], rax 
+mov [rbx + TSS64_ist1], rax
+mov [bsp_factory_ist1], rax
 
 mov word [rbx + TSS64_iomap_base], 104
 
@@ -329,6 +330,7 @@ mov r11, [timer_ticks]
 mov r12, [process_table_ptr]
 mov r13, [kheap_current_end]
 mov r14, [acpi_rsdp_addr]
+mov rdi, boot_info
 
 jmp r15
 
@@ -444,7 +446,6 @@ jmp show_loading_progress
 kernel_idle_task:
 hlt
 jmp kernel_idle_task
-
 
 kernel_not_found_text db 'OrangeOS could not start because the following file is missing or corrupt:',0
 kernel_not_found_text_hint db 'Please re-install a copy of the above file.',0

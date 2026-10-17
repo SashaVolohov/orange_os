@@ -83,9 +83,11 @@ jmp while_loop
 search_ended:
 
 mov cx, [vbe_mode]
+mov ax, [di+10h]
 mov esi, [di+28h]
 
 mov [vbe_mode], cx
+mov [vbe_pitch], ax
 mov [lfb_buffer_addr], esi
 
 mov bp, kernel_loaded
@@ -96,7 +98,7 @@ int 12h
 
 jc failed_get_ram
 
-cmp ax, 637
+cmp ax, 630
 jb small_low_memory
 
 mov ebx, 0
@@ -147,7 +149,28 @@ check_cpuid:
     bt      edx, 29
     jnc     .no_long_mode
 
+    mov word [drive_params], 42h
+
+    mov ah, 48h
+    mov dl, [loading_drive]
+    mov si, drive_params
+    int 13h
+
+    jc .drive_params_error
+
+    mov si, 0x7c00
+    mov cx, 100
+    call hash_pvd_16bit
+
+    mov [boot_pvd_hash], eax
+
     jmp set_videomode
+
+.drive_params_error:
+    mov bp, drive_params_error_text
+    call print_line_16
+    cli
+    hlt
 
 .no_cpuid:
     mov bp, no_cpuid_text
@@ -263,6 +286,23 @@ int 10h
 
 ret
 
+; SI - buffer, CX - count of bytes
+; EAX - checksum
+hash_pvd_16bit:
+    push cx
+    push si
+    mov eax, 2166136261
+.loop:
+    xor edx, edx
+    mov dl, [si]
+    xor eax, edx
+    imul eax, 16777619
+    inc si
+    loop .loop
+    pop si
+    pop cx
+ret
+
 vbe_not_supported_text db "FATAL ERROR: Your videocard or BIOS doesn't support VESA extensions.",0
 vbe_not_video_mode db "FATAL ERROR: System unable to found 800x600x32 video mode on your videocard.",0
 mode_set_error_text db "FATAL ERROR: Cannot set 800x600x32 video mode.",0
@@ -272,13 +312,24 @@ no_cpuid_extended_text db "FATAL ERROR: Your processor doesn't support CPUID ext
 no_long_mode_text db "FATAL ERROR: Your processor doesn't support x86-64 instructions. The system can not continue.",0
 small_low_memory_text db "FATAL ERROR: OrangeOS has not found enough memory. 1MB required to run OrangeOS",0
 kernel_loaded db "OrangeOS Kernel: starting...",0
+drive_params_error_text db "FATAL ERROR: Fail to get loading device information. The system can not continue.",0
 
 console_line db 0
 vbe_mode dw 0
 
+boot_info:
+
 vbe_hor_size dw 800
 vbe_ver_size dw 600
 vbe_color_depth db 32
+vbe_pitch dw 0
 
 loading_drive db 0
 lfb_buffer_addr dd 0
+
+drive_params dq 0, 0, 0, 0, 0, 0, 0, 0, 0
+boot_pvd_hash dd 0
+cpu_count dd 0
+cpus_temp_array rb 256
+bsp_factory_ist1 dq 0
+is_setup db 0

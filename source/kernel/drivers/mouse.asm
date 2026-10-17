@@ -198,7 +198,7 @@ vector_handler_44:
     push r8
     push r9
     push rdx
-    call draw_pixel
+    call draw_mouse_pixel
     pop rdx
     pop r9
     pop r8
@@ -356,7 +356,7 @@ draw_mouse:
     push rdx
     push r8
     push r9
-    call draw_pixel
+    call draw_mouse_pixel
     pop r9
     pop r8
     pop rdx

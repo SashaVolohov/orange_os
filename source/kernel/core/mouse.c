@@ -1,5 +1,6 @@
 #include "core.h"
 #include "gui.h"
+#include "calculator.h"
 
 extern int is_start_pressed;
 extern int is_start_menu_open;
@@ -10,7 +11,7 @@ static window_t* dragging_window = NULL;
 void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
 
     int menu_w = 160;
-    int menu_h = 120;
+    int menu_h = 150;
     int menu_x = 5;
     int menu_y = TASKBAR_Y - menu_h;
 
@@ -33,17 +34,19 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
             int relative_y = my - (menu_y + 4);
             int item_index = relative_y / 36;
 
-            if (item_index >= 0 && item_index < 3) {
+            if (item_index >= 0 && item_index < 4) {
                 active_menu_item = item_index;
 
                 if (is_left_button_pressed) {
                     is_start_menu_open = 0;
                     
-                    if (active_menu_item == 0) {
-                        openDeviceManager();
+                    if(active_menu_item == 0) {
+                        openCalc();
                     } else if (active_menu_item == 1) {
-                        openAbout();
+                        openDeviceManager();
                     } else if (active_menu_item == 2) {
+                        openAbout();
+                    } else if (active_menu_item == 3) {
                         // Команда ACPI или APM на выключение ПК
                         // acpi_poweroff();
                     }

@@ -5,6 +5,9 @@ format ELF64
 public kernel_header
 public kernel_start
 public pci_devices
+public fb_front_buffer
+public lfb_buffer_addr
+public boot_info
 
 section '.text.header' writeable executable
 
@@ -24,6 +27,8 @@ extrn AcpiEnableSubsystem
 extrn AcpiInitializeObjects
 
 extrn KiInitializeKernel
+
+extrn kp_entry_ap
 
 use64
 
@@ -60,11 +65,26 @@ mov [pt_end], rcx
 mov [ptv_end], rdx
 mov [bitmap_end], r8
 mov [lfb_buffer_addr], r9d
+mov [lfb_mouse_addr], r9d
 mov [lapic_base_addr], r10
 mov [timer_ticks], r11
 mov [process_table_ptr], r12
 mov [kheap_current_end], r13
 mov [acpi_rsdp_addr], r14
+
+mov [boot_info], rdi
+
+mov rbx, [boot_info] ; Hor size
+mov ax, word [rbx]
+mov [vbe_hor_size], ax
+mov ax, word [rbx+2] ; Ver size
+mov [vbe_ver_size], ax
+mov al, byte [rbx+4]; Color depth
+mov [vbe_color_depth], al
+
+mov rax, 0
+mov eax, [lfb_buffer_addr]
+mov [fb_front_buffer], rax
 
 mov dword [current_task_index], 1
 mov dword [total_processes], 2
@@ -94,30 +114,10 @@ je continue
 
 call mouse_init
 
-mov rsi, 0
-mov esi, [lfb_buffer_addr]
-
-mov eax, 480000
-
-gui_screen:
-
-mov [rsi], byte 255
-mov [rsi+1], byte 148
-mov [rsi+2], byte 0
-mov [rsi+3], byte 255
-
-dec eax
-add rsi, 4
-cmp eax, 00h
-jne gui_screen
-je continue
-
 continue:
 
 call init_dynamic_idt
 call init_syscall_interface
-
-;call init_acpi_system
 
 sti
 
@@ -392,114 +392,103 @@ call hda_setup_output_stream
 
 .draw_interface:
 
-mov r13d, 10
-mov r12d, 10
-mov r11d, 300
-mov r10d, 300
-mov cl, 0FFh
-mov bh, 0FFh
-mov bl, 0FFh
-mov ch, 0FFh
-
-call draw_window
-
-
-mov r15, [total_devices]
-mov r14, total_devices_text
-mov r13, 0
-call format_10_string_with_64_int
-
-mov r13, r14
-mov r15d, 20
-mov r14d, 50
-mov cl, 0
-mov bh, 0
-mov bl, 0
-mov ch, 0FFh
-call draw_text
-
-mov rcx, 0
-mov r8, 70
-
-.draw_all_pci_devices:
-
-mov rax, rcx
-mov rbx, 16
-mul rbx
-
-mov rbx, [pci_devices]
-add rbx, rax
-
-mov r15b, [rbx+4] ; Class
-
-mov rdx, pci_devices_list_text
-
-.search_class:
-
-mov al, [rdx]
-cmp al, r15b
-je .class_found
-
-add rdx, 16
-mov r10, pci_devices_list_text_end
-cmp rdx, r10
-je .class_not_found
-
-jmp .search_class
-
-.class_not_found:
-
-mov rdx, pci_devices_list_text
-
-.class_found:
-
-mov rax, [rdx+1]
-mov r13, rax
-
-push r15
-push r14
-push rcx
-push rbx
-
-mov r15d, 20
-mov r14d, r8d
-mov cl, 0
-mov bh, 0
-mov bl, 0
-mov ch, 0FFh
-call draw_text
-
-pop rbx
-pop rcx
-pop r14
-pop r15
-
-.next_device:
-
-add rcx, 1
-add r8, 15
-
-cmp rcx, [total_devices]
-je .pci_devices_drawed
-
-jmp .draw_all_pci_devices
-
-.pci_devices_drawed:
-
 call KiInitializeKernel
-
-.no_tasks:
-hlt
-jmp .no_tasks
 
 kernel_idle_task:
 hlt
 jmp kernel_idle_task
 
+TRAMPOLINE_BASE = 0x8000
+
+public trampoline_start
+trampoline_start:
+use16
+    cli
+    cld
+    
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    
+    lgdt [trampoline_gdt_desc - trampoline_start + TRAMPOLINE_BASE]
+    
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+    
+    jmp 0x08:(trampoline_pm - trampoline_start + TRAMPOLINE_BASE)
+
+use32
+trampoline_pm:
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    
+    mov eax, cr4
+    or eax, 1 shl 5
+    mov cr4, eax
+    
+    mov eax, dword [ap_target_cr3 - trampoline_start + TRAMPOLINE_BASE]
+    mov cr3, eax
+    
+    mov ecx, 0xC0000080
+    rdmsr
+    or eax, 1 shl 8
+    wrmsr
+    
+    mov eax, cr0
+    or eax, (1 shl 31) or 1 ; CR0.PG = 1, CR0.PE = 1
+    mov cr0, eax
+    
+    jmp 0x18:(trampoline_lm - trampoline_start + TRAMPOLINE_BASE)
+
+use64
+trampoline_lm:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    
+    mov rsp, [ap_stack_top]
+    
+    xor rbp, rbp
+    
+    mov rax, kp_entry_ap
+    call rax
+
+.halt:
+    hlt
+    jmp .halt
+
+public ap_target_cr3
+public ap_stack_top
+ap_target_cr3    dq 0
+ap_stack_top     dq 0
+
+align 16
+trampoline_gdt:
+    dq 0
+    dq 0x00CF9A000000FFFF
+    dq 0x00CF92000000FFFF
+    dq 0x00209A0000000000
+trampoline_gdt_end:
+
+trampoline_gdt_desc:
+    dw trampoline_gdt_end - trampoline_gdt - 1
+    dq TRAMPOLINE_BASE + (trampoline_gdt - trampoline_start)
+
+public trampoline_end
+trampoline_end:
+
 file_addr dq 0
 
 loading_drive db 0
 lfb_buffer_addr dd 0
+lfb_mouse_addr dd 0
+fb_front_buffer dq 0
 
 current_progress dq 0
 needed_progress dq 0
@@ -519,3 +508,5 @@ setup_addr dq 0
 total_devices_text db '0x1111111111111111   devices found on this computer.',0
 concord_file db 'CONCORD.PCM'
 music_buffer dq 0
+
+boot_info dq 0

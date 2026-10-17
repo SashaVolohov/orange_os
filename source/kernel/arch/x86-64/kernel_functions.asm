@@ -28,8 +28,10 @@ public update_status_bar
 public getch
 
 public sleep_ms
+public flip_buffers
 
-public set_pixel
+public spin_lock
+public spin_unlock
 
 MAX_PROCESSES equ 32
 
@@ -111,31 +113,54 @@ pop rsi
 
 ret
 
-set_pixel:
-    push rbx
-    push r14
-    push r15
+draw_mouse_pixel: ; r15d - x, r14d - y, cl - R, bh - G, bl - B, ch - alpha
 
-    mov r15d, edi
-    mov r14d, esi
+push rsi
+push rax
+push r8
+push rax
+push rdx
 
-    xor eax, eax        
+cmp r15d, 800
+jae .exit
 
-    mov bh, cl
-    mov bl, r8b
+cmp r14d, 600
+jae .exit
 
-    mov al, r9b
-    shl eax, 8
-    
-    mov al, dl
-    
-    mov cx, ax
+mov rsi, 0
+mov esi, [lfb_mouse_addr]
 
-    call draw_pixel
+mov rax, 0
+mov eax, r14d
+mov r8, 0
+mov r8w, [vbe_hor_size]
+mul r8d
 
-    pop r15
-    pop r14
-    pop rbx
+mov r8d, 4
+mul r8d
+
+add esi, eax
+
+mov rax, 0
+mov eax, r15d
+mov r8d, 4
+mul r8d
+
+add esi, eax
+
+mov [esi], bl
+mov [esi+1], bh
+mov [esi+2], cl
+mov [esi+3], ch
+
+.exit:
+
+pop rdx
+pop rax
+pop r8
+pop rax
+pop rsi
+
 ret
 
 read_pixel: ; r15d - x, r14d - y. Output: cl - R, bh - G, bl - B, ch - alpha
@@ -1115,6 +1140,42 @@ sysretq
 .invalid_syscall:
     mov rax, -1
 jmp .exit_syscall
+
+; rdi = dest_front
+; rsi = src_back
+; rdx = dwords_count
+
+flip_buffers:
+    cld
+    mov rcx, rdx
+    rep movsd
+ret
+
+; RDI = lock addr
+spin_lock:
+
+push rax
+
+    mov eax, 1
+
+.loop:
+    xchg [rdi], eax
+    test eax, eax
+    jz .done
+
+    pause
+    jmp .loop
+
+.done:
+
+pop rax
+
+    ret
+
+; RDI = lock addr
+spin_unlock:
+    mov dword [rdi], 0
+ret
 
 get_string_from_int_32_string db "0x00000000",0
 get_string_from_int_64_string db "0x0000000000000000",0

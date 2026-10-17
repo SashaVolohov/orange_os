@@ -14,6 +14,8 @@ public pt_begin
 public get_used_memory_mb_no_popcnt
 public mb_memory
 
+public GDTR_64
+
 align 8;
 
 GDT_64:
@@ -24,8 +26,10 @@ dw 0FFFFh, 0, 9A00h, 0AFh;
 dw 0FFFFh, 0, 9200h, 0AFh;
 dw 0FFFFh, 0, 0FA00h, 0AFh
 dw 0FFFFh, 0, 0F200h, 0AFh
-dq 0;
-dq 0;
+
+public gdt_tss_slots
+gdt_tss_slots:
+    times 512 dq 0
 
 label GDT_64_SIZE at $-GDT_64
 
@@ -851,12 +855,16 @@ ret
 ; Output - RAX - virtual address of allocated memory (or 0 if failed)
 kmalloc:
 
-
     push rbx
     push r12
 
     cmp rdi, 0
     jz .out_of_memory
+
+    push rdi
+        mov rdi, kheap_lock
+        call spin_lock
+    pop rdi
 
     add rdi, 15
     and rdi, not 15
@@ -971,8 +979,17 @@ kmalloc:
     xor rax, rax
 
 .done:
+
+    push rdi
+
+        mov rdi, kheap_lock
+        call spin_unlock
+
+    pop rdi
+
     pop r12
     pop rbx
+
 ret
 
 ; Input  - RDI - number of elements (num)
@@ -1025,6 +1042,11 @@ kfree:
     test rdi, rdi
     jz .exit
 
+    push rdi
+        mov rdi, kheap_lock
+        call spin_lock
+    pop rdi
+
     sub rdi, 16
     mov qword [rdi + 8], 1
 
@@ -1061,6 +1083,12 @@ kfree:
 .done:
     pop rbx
 .exit:
+
+    push rdi
+        mov rdi, kheap_lock
+        call spin_unlock
+    pop rdi
+
     ret
 
 mb_memory dq 0
@@ -1073,3 +1101,6 @@ bitmap_end dq 100000h
 get_used_memory_mb_ptr dq get_used_memory_mb
 
 kheap_current_end dq KHEAP_START
+
+align 4
+kheap_lock dd 0

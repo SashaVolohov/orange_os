@@ -72,7 +72,7 @@ int 12h
 
 jc failed_get_ram
 
-cmp ax, 630
+cmp ax, 620
 jb small_low_memory
 
 mov ebx, 0
@@ -311,7 +311,6 @@ no_cpuid_text db "FATAL ERROR: Your processor doesn't support CPUID instruction.
 no_cpuid_extended_text db "FATAL ERROR: Your processor doesn't support CPUID extensions. The system can not continue.",0
 no_long_mode_text db "FATAL ERROR: Your processor doesn't support x86-64 instructions. The system can not continue.",0
 small_low_memory_text db "FATAL ERROR: OrangeOS has not found enough memory. 1MB required to run OrangeOS",0
-kernel_loaded db "OrangeOS Kernel: starting...",0
 orange_os_start db "Setup is inspecting your computer's hardware configuration...",0
 no_disk_extensions db "FATAL ERROR: Your BIOS doesn't support BIOS disk extensions. The system can not continue.",0
 no_lba_extensions db "FATAL ERROR: Your BIOS doesn't support BIOS disk LBA. The system can not continue.",0

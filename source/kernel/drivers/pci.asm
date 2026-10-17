@@ -134,6 +134,9 @@ pci_scan_bus_linear:
     and ax, 0xFFFF
     shr ebx, 16
 
+    mov [r9], ax ; Vendor ID
+    mov [r9+2], bx; Device ID
+
     mov rdi, r12
     mov rsi, r13
     mov rdx, r14
@@ -145,8 +148,6 @@ pci_scan_bus_linear:
     shr eax, 24
     mov r8b, al
 
-    mov [r9], ax ; Vendor ID
-    mov [r9+2], bx; Device ID
     mov [r9+4], r8b; Class
     mov [r9+5], r12b; Bus
     mov [r9+6], r13b; Device

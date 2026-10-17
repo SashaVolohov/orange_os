@@ -105,7 +105,45 @@ typedef struct {
     uint8_t  scsi_cmd[16];
 } __attribute__((packed)) usb_ms_cbw_t;
 
+typedef enum {
+    USB_DEV_UNKNOWN = 0,
+    USB_DEV_MASS_STORAGE,
+    USB_DEV_HID_MOUSE,
+    USB_DEV_HID_KEYBOARD
+} usb_dev_type_t;
 
+typedef struct {
+    uint8_t  slot_id;
+    uint8_t  is_connected;
+    usb_dev_type_t type;
+    
+    uint8_t  bulk_in_ep;
+    uint8_t  bulk_out_ep;
+    uint16_t max_packet_size;
+
+    uint32_t* bulk_in_ring_virt;
+    uint64_t  bulk_in_ring_phys;
+    int       bulk_in_idx;
+
+    uint32_t* bulk_out_ring_virt;
+    uint64_t  bulk_out_ring_phys;
+    int       bulk_out_idx;
+
+    uint8_t bulk_in_burst;
+    uint8_t bulk_out_burst;
+
+    uint32_t* ep0_ring_virt;
+    uint64_t  ep0_ring_phys;
+    int       ep0_idx;
+
+    int device_addresed;
+
+    uint64_t desc_buffer_phys;
+    uint32_t* desc_buffer_virt;
+
+} usb_device_t;
+
+#define MAX_USB_DEVICES 32
 
 #define XHCI_CMD_ADDRESS_DEVICE  11
 
@@ -156,6 +194,8 @@ typedef struct {
 #define XHCI_CMD_CONFIGURE_ENDPOINT 12
 
 #define TRB_TYPE_NORMAL         1
+
+#define XHCI_EP_ID(ep_num, is_in) (((ep_num) * 2) + ((is_in) ? 1 : 0))
 
 pci_device_t* find_xhci_controller();
 uint64_t get_xhci_base_address(pci_device_t* xhci);

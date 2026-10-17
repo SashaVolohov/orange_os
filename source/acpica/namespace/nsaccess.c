@@ -235,6 +235,15 @@ AcpiNsRootInitialize (
      *    0  _OSI Method       00203678 00 Args 1 Len 0000 Aml 00000000
      */
 
+    uint64_t addr = (uint64_t)InitVal;
+
+    uint32_t high = (uint32_t)(addr >> 32); 
+
+    uint32_t low = (uint32_t)addr; 
+
+    kprintf(10, 10, 0xFF, 0xFF, 0xFF, 0xFF, "InitVal ptr address: 0x%x%x", high, low);
+    Hold();
+
     for (InitVal = AcpiGbl_PreDefinedNames; InitVal->Name; InitVal++)
     {
         Status = AE_OK;

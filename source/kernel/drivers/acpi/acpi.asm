@@ -1,6 +1,7 @@
 use64
 
 public acpi_rsdp_addr
+public lapic_base_addr
 
 init_acpi_system:
     push rbp

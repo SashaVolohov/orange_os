@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-INCLUDES="-I./include"
+INCLUDES="-I./include -I../apps/include"
 
 CFLAGS="-c -m64 -ffreestanding -mno-red-zone -mno-mmx -mno-sse -fno-pic -fno-stack-protector -fno-pie -O2"
 CFLAGS="$CFLAGS -D_KERNEL -mcmodel=large -fno-builtin -fno-asynchronous-unwind-tables"

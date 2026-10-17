@@ -511,6 +511,7 @@ map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
     push r10
     push r11
     push rdi
+    push rcx
 
     mov r13, rdi
     mov r14, rsi
@@ -579,6 +580,7 @@ map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
     xor rax, rax
 
 .done:
+    pop rcx
     pop rdi
     pop r11
     pop r10

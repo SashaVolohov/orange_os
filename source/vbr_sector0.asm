@@ -41,7 +41,7 @@ main:
     mov sp, 0x7C00
     sti
 
-    mov [bsDriveNumber], dl
+    mov [drive_number], dl
 
     mov eax, [bpbHiddenSectors]
     add eax, 2
@@ -60,7 +60,7 @@ main:
     int 13h
     jc .disk_error
 
-    mov dl, [bsDriveNumber]
+    mov dl, [drive_number]
 
     jmp 0x0000:0x3000
 
@@ -77,6 +77,8 @@ main:
     jmp $
 
 msg_vbr_err db "VBR Read Error", 13, 10, "Press CTRL+ALT+DEL to restart.", 13, 10, 0
+
+drive_number db 0
 
 times 510-($-$$) db 0
 dw 0xAA55

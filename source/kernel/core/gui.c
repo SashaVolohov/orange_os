@@ -1,5 +1,6 @@
 #include "core.h"
 #include "gui.h"
+#include "os_memory.h"
 
 window_t Windows[100];
 
@@ -9,6 +10,8 @@ int is_start_menu_open = 0;
 int active_menu_item = -1;
 int window_in_focus = 0;
 int current_new_window_id = 0;
+
+uint32_t* fb_back_buffer = NULL; 
 
 void draw_rect(int x, int y, int width, int height, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     for (int curr_y = y; curr_y < y + height; curr_y++) {
@@ -120,7 +123,7 @@ void draw_start_menu() {
     if (!is_start_menu_open) return;
 
     int menu_w = 160;
-    int menu_h = 120;
+    int menu_h = 150;
     int menu_x = 5;
     int menu_y = TASKBAR_Y - menu_h;
 
@@ -133,8 +136,8 @@ void draw_start_menu() {
 
     draw_rect(menu_x + 2, menu_y + 2, 20, menu_h - 4, 0x00, 0x00, 0x80, 0xFF); 
 
-    const char* menu_items[] = { "Device Manager", "About OS", "Shut Down" };
-    int item_count = 3;
+    const char* menu_items[] = { "Calculator", "Device Manager", "About OS", "Shut Down" };
+    int item_count = 4;
     int item_start_x = menu_x + 26;
 
     for (int i = 0; i < item_count; i++) {
@@ -269,7 +272,14 @@ void draw_window(const window_t* win) {
 void draw_all_windows()
 {
 
-    draw_rect(0, 0, 800, 600, 0, 148, 255, 0xFF);
+    if (fb_back_buffer == NULL) {
+        return;
+    }
+
+    uint32_t bg_color = (0xFF << 24) | (0 << 16) | (148 << 8) | 0xFF;
+    for(size_t i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+        fb_back_buffer[i] = bg_color;
+    }
 
     for (size_t i = 0; i < 100; i++) {
         if (Windows[i].is_free) {
@@ -279,6 +289,8 @@ void draw_all_windows()
 
     draw_taskbar();
     draw_start_menu();
+
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
 }
 
 void draw_button(int body_x, int body_y, const button_t* btn) {
@@ -401,4 +413,26 @@ window_t* window_focus_handle(int mouse_x, int mouse_y) {
     Windows[100 - 1] = target_window;
 
     return &Windows[100 - 1];
+}
+
+void init_double_buffering() {
+    fb_back_buffer = (uint32_t*)kmalloc(SCREEN_SIZE);
+    
+    if(fb_back_buffer == 0) {
+        KeBugCheck(0x20);
+    }
+
+    lfb_buffer_addr = (uint32_t)virtual_to_physical(pt_begin, (uintptr_t)fb_back_buffer);
+}
+
+void set_pixel(int32_t x, int32_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    if (x < 0 || x >= SCREEN_WIDTH || y < 0 || y >= SCREEN_HEIGHT) return;
+
+    size_t index = y * SCREEN_WIDTH + x;
+
+    uint32_t color = (a << 24) | (r << 16) | (g << 8) | b;
+
+    if (fb_back_buffer != NULL) {
+        fb_back_buffer[index] = color;
+    }
 }

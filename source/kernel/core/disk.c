@@ -4,12 +4,16 @@
 
 Drive drives[64];
 int total_drives = 0;
+Partition partitions[256];
+
+int total_partitions = 0;
 
 void registerDisk(uint64_t type, uint8_t port, uint8_t port2, uint64_t sector_count) {
     drives[total_drives].type = type;
     drives[total_drives].port = port;
     drives[total_drives].port2 = port2;
     drives[total_drives].sector_count = sector_count;
+    drives[total_drives].atapi = 0;
 
     total_drives++;
 }
@@ -70,4 +74,45 @@ int disk_write(int disk_id, uint64_t lba, uint32_t count, uint64_t source_addr) 
         return ahci_write(drives[disk_id].port, lba, count, source_addr);
     }
 
+}
+
+void add_logical_partition(int disk_id, int64_t starting_lba, int64_t size_in_sectors, int64_t fs_type, int8_t bootable) {
+    partitions[total_partitions].drive_index = disk_id;
+    partitions[total_partitions].fs_type = fs_type;
+    partitions[total_partitions].is_active = bootable;
+    partitions[total_partitions].sector_count = size_in_sectors;
+    partitions[total_partitions].start_lba = starting_lba;
+    total_partitions++;
+}
+
+void partition_scan_all_drives() {
+    uint8_t sector_buf[512];
+    
+    for (uint32_t d = 0; d < total_drives; d++) {
+        if (drives[d].atapi == 1) {
+            add_logical_partition(d, 0, drives[d].sector_count, 0x96, 1);
+            continue;
+        }
+        
+        disk_read(d, 0, 1, (uint64_t)sector_buf);
+        
+        if (sector_buf[510] == 0x55 && sector_buf[511] == 0xAA) {
+            MbrPartitionEntry* table = (MbrPartitionEntry*)&sector_buf[0x1BE];
+            
+            for (int i = 0; i < 4; i++) {
+                if (table[i].size_in_sectors > 0) {
+                    add_logical_partition(d, table[i].starting_lba, table[i].size_in_sectors, table[i].os_type, (table[i].boot_indicator == 0x80) ? 1 : 0);
+                }
+            }
+        }
+    }
+}
+
+Partition* get_partition(int partition) {
+    if(partition >= 256) return 0;
+    return &partitions[partition];
+}
+
+int get_partition_count() {
+    return total_partitions;
 }
