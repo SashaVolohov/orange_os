@@ -32,50 +32,36 @@ mov ss, ax
 mov esp, 7000h
 mov gs, ax
 
-mov rsi, setup_loading_memory
-call draw_status_bar_long_mode
-
 call memory_init
-
-mov rax, [pt_begin]
-cmp rax, 100000h
-
-je .more_than_128
-mov [ptv_end], 100000h
-jmp .allocator_create
-
-.more_than_128:
-mov rax, [pt_end]
-mov [ptv_end], rax
-
-.allocator_create:
-
+call videomem_init
 call allocator_init
-
-mov rsi, setup_loading_pic
-call draw_status_bar_long_mode
 
 call init_pic
 
-mov rsi, setup_loading_idt
-call draw_status_bar_long_mode
-
 LIDT [IDTR]
 
-mov rsi, setup_loading_com1
-call draw_status_bar_long_mode
 call com1_init
-
-mov rsi, setup_loading_com2
-call draw_status_bar_long_mode
 call com2_init
 
-mov rsi, setup_loading_rtc
-call draw_status_bar_long_mode
 call init_rtc
 
-mov rsi, setup_loading_e820
-call draw_status_bar_long_mode
+mov rsi, 0
+mov esi, [lfb_buffer_addr]
+
+mov eax, 480000
+
+gui_screen:
+
+mov [rsi], byte 0
+mov [rsi+1], byte 0
+mov [rsi+2], byte 0
+mov [rsi+3], byte 0
+
+dec eax
+add rsi, 4
+cmp eax, 00h
+jne gui_screen
+je continue
 
 continue:
 
@@ -169,18 +155,8 @@ protect_core:
 
 .pmm_fully_ready:
 
-mov rsi, setup_loading_heap
-call draw_status_bar_long_mode
-
 call kheap_init
-
-mov rsi, setup_loading_scheduler
-call draw_status_bar_long_mode
-
 call tasking_init
-
-mov rsi, setup_loading_tss
-call draw_status_bar_long_mode
 
 lea rdi, [tss0]
 mov rcx, 13
@@ -194,7 +170,8 @@ mov [rbx + TSS64_rsp0], rax
 call alloc_page
 add rax, 4096
 and rax, not 0xF
-mov [rbx + TSS64_ist1], rax 
+mov [rbx + TSS64_ist1], rax
+mov [bsp_factory_ist1], rax
 
 mov word [rbx + TSS64_iomap_base], 104
 
@@ -205,23 +182,11 @@ lgdt [GDTR_64]
 mov ax, 0x28
 ltr ax
 
-mov rsi, setup_loading_acpi
-call draw_status_bar_long_mode
-
 call init_acpi
-
-mov rsi, setup_loading_apic
-call draw_status_bar_long_mode
 call init_apic
-
-mov rsi, setup_loading_lapic
-call draw_status_bar_long_mode
 
 call calibrate_lapic_timer
 call init_lapic_timer
-
-mov rsi, setup_loading_ioapic
-call draw_status_bar_long_mode
 
 call init_io_apic_keyboard
 call init_io_apic_irq2
@@ -239,12 +204,10 @@ call init_io_apic_irq13
 call init_io_apic_irq14
 call init_io_apic_irq15
 
-mov rsi, setup_loading_cdfs
-call draw_status_bar_long_mode
-
 call iso9660_init
 cmp rax, -1
 je kernel_not_found
+
 
 call alloc_page
 test rax, rax
@@ -258,9 +221,6 @@ mov esi, [root_lba]
 mov rdx, 1
 call read_atapi_sector
 
-mov rsi, setup_loading_kernel
-call draw_status_bar_long_mode
-
 mov rdi, [root_cd_buffer]
 mov rsi, kernel_file
 mov rdx, 12
@@ -270,33 +230,39 @@ call iso9660_find_entry
 test rax, rax
 jz kernel_not_found
 
+
 mov [setup_lba], rax
 mov [setup_size], rcx
 
+
+
+
 mov r15, rcx
+add r15, 16384
 mov r14, 0
-mov rdi, 0xFFFF900000000000
 
 alloc_pages_for_kernel:
-
-mov [2000h], rdi
 
 call alloc_page
 test rax, rax
 jz memory_management
 
-mov rsi, rax
-mov rdx, 011b
-call map_page
-
-test rax, rax
-jz memory_management
-
-add rdi, 4096
 add r14, 4096
+
+cmp r14, 4096
+je write_kernel_addr
 
 cmp r14, r15
 jle alloc_pages_for_kernel
+
+jmp draw_progress
+
+write_kernel_addr:
+mov [2000h], rax
+
+jmp alloc_pages_for_kernel
+
+draw_progress:
 
 mov rdx, 0
 mov rax, r15
@@ -304,6 +270,11 @@ mov rbx, 2048
 div rbx
 
 mov [needed_progress], rax
+
+
+
+
+
 
 .check_sectors:
 
@@ -324,15 +295,22 @@ add rax, 1
 .load_file:
 
 mov r13, orange_os_start
-mov r15d, 0
-mov r14d, 0
+mov r15d, 300
+mov r14d, 550
 mov cl, 0FFh
 mov bh, 0FFh
 mov bl, 0FFh
 mov ch, 0FFh
 call draw_text
 
-mov rdi, 0xFFFF900000000000
+push rax
+
+mov rdi, show_loading_progress
+call create_task
+
+pop rax
+
+mov rdi, [2000h]
 mov rsi, [setup_lba]
 mov rdx, rax
 
@@ -343,31 +321,160 @@ add rbx, struct_pcb_size
 add rbx, struct_pcb_size
 mov dword [rbx + PCB_state], TASK_STATE_ZOMBIE
 
-mov rax, 0xFFFF900000000000
-add rax, 6
-mov r15, [rax]
 
-mov rsi, setup_starting_kernel
-call draw_status_bar_long_mode
+mov r12, [2000h]
 
-mov rax, [mb_memory]
-mov rbx, [pt_begin]
-mov rcx, [pt_end]
-mov rdx, [ptv_end]
-mov r8, [bitmap_end]
-mov r9d, 0
-mov r10, [lapic_base_addr]
-mov r11, [timer_ticks]
-mov r12, [process_table_ptr]
-mov r13, [kheap_current_end]
+prepare_and_load_kernel:
+    cmp dword [r12], 0x464C457F
+    jne .error_format
 
-jmp r15
+    mov rbx, [r12 + 0x20]
+    add rbx, r12
+    movzx rcx, word [r12 + 0x38]
+
+.loop_segments:
+    push rcx
+
+    cmp dword [rbx], 1
+    jne .skip_segment
+
+    mov r8, [rbx + 0x10]
+    mov r9, [rbx + 0x28]
+    
+    mov rdi, r8
+    and rdi, 0xFFFFFFFFFFFFF000
+
+    mov rdx, r8
+    add rdx, r9
+    sub rdx, rdi
+    add rdx, 4095
+    shr rdx, 12
+
+.loop_map_pages:
+    push rdx
+    push rdi
+
+    call alloc_page
+    test rax, rax
+    jz .error_out_of_memory
+
+    mov rsi, rax
+    
+    mov rdi, [rsp]
+    
+    mov rdx, 0x03
+    
+    call map_page
+    test rax, rax
+    jz .error_paging_fail
+
+    pop rdi
+    pop rdx
+    
+    add rdi, 4096
+    dec rdx
+    jnz .loop_map_pages
+
+    mov rsi, [rbx + 0x08]
+    add rsi, r12
+    
+    mov rdi, [rbx + 0x10]
+    mov rcx, [rbx + 0x20]
+    
+    push rdi
+    push rcx
+    rep movsb
+    pop rcx
+    pop rdi
+
+    mov rdi, [rbx + 0x10]
+    mov rcx, [rbx + 0x20]
+    add rdi, rcx
+    
+    mov rcx, rdx
+    sub rcx, [rbx + 0x20]
+    jbe .skip_segment
+
+    add rcx, 4095
+    and rcx, 0xFFFFFFFFFFFFF000
+
+    xor al, al
+    rep stosb      
+
+.skip_segment:
+    movzx r13, word [r12 + 0x36]
+    add rbx, r13
+    pop rcx
+    dec rcx
+    jnz .loop_segments
+
+    mov r15, [r12 + 0x18]
+
+    cli
+
+    mov rax, [mb_memory]
+    mov rbx, [pt_begin]
+    mov rcx, [pt_end]
+    mov rdx, [ptv_end]
+    mov r8, [bitmap_end]
+    mov r9d, [lfb_buffer_addr]
+    mov r10, [lapic_base_addr]
+    mov r11, [timer_ticks]
+    mov r12, [process_table_ptr]
+    mov r13, [kheap_current_end]
+    mov r14, [acpi_rsdp_addr]
+    mov rdi, boot_info
+
+    jmp r15
+
+.error_format:
+    jmp kernel_not_found
+    
+.error_out_of_memory:
+    jmp kernel_not_found
+    
+.error_paging_fail:
+    jmp kernel_not_found
 
 kernel_not_found:
 cli
 
-mov rsi, kernel_not_found_text
-call draw_status_bar_long_mode
+mov rsi, 0
+mov esi, [lfb_buffer_addr]
+
+mov eax, 480000
+
+mov [rsi], byte 0
+mov [rsi+1], byte 0
+mov [rsi+2], byte 0
+mov [rsi+3], byte 0
+
+mov r13, kernel_not_found_text
+mov r15d, 0
+mov r14d, 0
+mov cl, 0FFh
+mov bh, 0FFh
+mov bl, 0FFh
+mov ch, 0FFh
+call draw_text
+
+mov r13, kernel_file
+mov r15d, 0
+mov r14d, 20
+mov cl, 0FFh
+mov bh, 0FFh
+mov bl, 0FFh
+mov ch, 0FFh
+call draw_text
+
+mov r13, kernel_not_found_text_hint
+mov r15d, 0
+mov r14d, 40
+mov cl, 0FFh
+mov bh, 0FFh
+mov bl, 0FFh
+mov ch, 0FFh
+call draw_text
 
 hlt
 jmp $
@@ -442,71 +549,14 @@ kernel_idle_task:
 hlt
 jmp kernel_idle_task
 
-draw_status_bar_long_mode:
-    push rsi
-    push rdi
-    push rcx
-    push rax
-
-    mov rdi, 0xB8F00    
-    
-    mov rcx, 80
-    mov ah, 70h
-
-.text_loop:
-    mov al, [rsi]
-    inc rsi
-    cmp al, 0
-    je .fill_loop
-
-    mov [rdi], ax
-    add rdi, 2
-    dec rcx
-    jz .done
-    jmp .text_loop
-
-.fill_loop:
-    mov al, ' '
-.fill_loop_run:
-    cmp rcx, 0
-    je .done
-    mov [rdi], ax
-    add rdi, 2
-    dec rcx
-    jmp .fill_loop_run
-
-.done:
-    pop rax
-    pop rcx
-    pop rdi
-    pop rsi
-ret
-
-
-kernel_not_found_text db 'FATAL ERROR: Setup cannot load kernel into memory, file missing or corrupt.',0
-
-setup_loading_memory db 'Setup is preparing <Memory Allocator>...',0
-setup_loading_pic db 'Setup is preparing <Programmable Interrupt Controller>...',0
-setup_loading_idt db 'Setup is preparing <Interrupt Descriptor Table>...',0
-setup_loading_com1 db 'Setup is preparing <Communication port 1>...',0
-setup_loading_com2 db 'Setup is preparing <Communication port 2>...',0
-setup_loading_rtc db 'Setup is preparing <Real-Time Clock>...',0
-setup_loading_e820 db 'Setup is preparing <Memory Map>...',0
-setup_loading_heap db 'Setup is preparing <Kernel Heap>...',0
-setup_loading_scheduler db 'Setup is preparing <OrangeOS Scheduler>...',0
-setup_loading_tss db 'Setup is preparing <Task State Segment>...',0
-setup_loading_acpi db 'Setup is preparing <Advanced Configuration and Power Interface>...',0
-setup_loading_apic db 'Setup is preparing <Advanced Programmable Interrupt Controller>...',0
-setup_loading_lapic db 'Setup is preparing <Local Advanced Programmable Interrupt Controller>...',0
-setup_loading_ioapic db 'Setup is preparing <Input/Output Advanced Programmable Interrupt Controller>...',0
-setup_loading_cdfs db 'Setup is preparing <Compact Disc File System>...',0
-setup_loading_kernel db 'Setup is loading <OrangeOS Kernel>...',0
-setup_starting_kernel db 'Setup is starting OrangeOS',0
+kernel_not_found_text db 'OrangeOS could not start because the following file is missing or corrupt:',0
+kernel_not_found_text_hint db 'Please re-install a copy of the above file.',0
 
 fat_main_files dq 0
 fat_filename db '00000000000',0
 file_addr dq 0
-kernel_file db 'OROSKRNL.OEX',0
+kernel_file db 'OROSKRNL.ELF',0
+orange_os_start db 'OrangeOS is loading files...',0
 current_progress dq 0
 needed_progress dq 0
 kernel_list dq 0

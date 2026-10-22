@@ -518,6 +518,12 @@ map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
     push rdi
     push rcx
     push rdx
+    push r8
+    push r12
+    push r13
+    push r14
+    push r15
+    push rsi
 
     mov r13, rdi
     mov r14, rsi
@@ -586,6 +592,14 @@ map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
     xor rax, rax
 
 .done:
+
+    pop rsi
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r8
+
     pop rdx
     pop rcx
     pop rdi
@@ -625,13 +639,15 @@ get_or_create_table:
     mov rbx, rax
     or rbx, 111b
     mov qword [rdi], rbx
-
+    
     jmp .done
 
 .table_exists:
     and rax, not 0xFFF
 
 .done:
+    and rax, not 0xFFF 
+    
     pop rdi
     pop rbx
     ret
@@ -640,7 +656,7 @@ get_or_create_table:
     xor rax, rax
     pop rdi
     pop rbx
-ret
+    ret
 
 unmap_page: ;rdi - virtual addr
     push rbx

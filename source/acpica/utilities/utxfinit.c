@@ -231,8 +231,6 @@ AcpiInitializeSubsystem (
         return_ACPI_STATUS (Status);
     }
 
-    asm volatile("ud2");
-
     /* Initialize the global OSI interfaces list with the static names */
 
     Status = AcpiUtInitializeInterfaces ();

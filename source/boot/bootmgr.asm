@@ -238,7 +238,7 @@ mov [setup_size], rcx
 mov r15, rcx
 add r15, 16384
 mov r14, 0
-mov rdi, 0xFFFF900000000000
+mov rdi, 0xFFFFFFFF80000000
 
 alloc_pages_for_kernel:
 
@@ -302,7 +302,7 @@ call create_task
 
 pop rax
 
-mov rdi, 0xFFFF900000000000
+mov rdi, 0xFFFFFFFF80000000
 mov rsi, [setup_lba]
 mov rdx, rax
 
@@ -313,7 +313,7 @@ add rbx, struct_pcb_size
 add rbx, struct_pcb_size
 mov dword [rbx + PCB_state], TASK_STATE_ZOMBIE
 
-mov rax, 0xFFFF900000000000
+mov rax, 0xFFFFFFFF80000000
 add rax, 6
 mov r15, [rax]
 

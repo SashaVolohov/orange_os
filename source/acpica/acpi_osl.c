@@ -73,29 +73,7 @@ ACPI_PHYSICAL_ADDRESS AcpiOsGetRootPointer(void) {
     return 0; 
 }
 
-void *AcpiOsAllocate (ACPI_SIZE Size) {
-    void *raw = kmalloc(Size + 16); 
-    if (!raw) return NULL;
-
-    void *aligned = (void *)(((uintptr_t)raw + 15) & ~15);
-    
-    if (aligned == raw) {
-        aligned = (void *)((uintptr_t)aligned + 16);
-    }
-
-    ((void **)aligned)[-1] = raw;
-
-    memset(aligned, 0, Size);
-    return aligned;
-}
-
-void AcpiOsFree (void *Memory) {
-    if (!Memory) return;
-    void *raw = ((void **)Memory)[-1];
-    kfree(raw);
-}
-
-/*void *AcpiOsAllocate(ACPI_SIZE Size)
+void *AcpiOsAllocate(ACPI_SIZE Size)
 {
     uint64_t clean_size = (uint64_t)Size; 
     void* ptr = NULL;
@@ -113,7 +91,7 @@ void AcpiOsFree (void *Memory) {
 
 void AcpiOsFree(void* Memory) {
     kfree(Memory);
-}*/
+}
 
 #define ACPI_MAX_MAP_SLOTS 32
 

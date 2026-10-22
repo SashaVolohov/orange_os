@@ -127,5 +127,5 @@ void mouse_calculator_content(const window_t* win, int click_x, int click_y, int
 }
 
 void openCalc() {
-    createWindow(400, 150, 175, 240, "Calculator", draw_calculator_content, mouse_calculator_content);
+    createWindow(400, 150, 175, 240, "Калькулятор", draw_calculator_content, mouse_calculator_content);
 }

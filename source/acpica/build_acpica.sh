@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-INCLUDES="-I./include"
+INCLUDES="-I./include -I../kernel/include"
 
 CFLAGS="-c -m64 -ffreestanding -mno-red-zone -mno-mmx -mno-sse -fno-pic -fno-stack-protector -fno-pie -O2"
-CFLAGS="$CFLAGS -D_KERNEL -DACPI_LIBRARY -mcmodel=large -fno-builtin -fno-asynchronous-unwind-tables"
-CFLAGS="$CFLAGS -DACPI_DEBUGGER_OFF -DACPI_DISASSEMBLER_OFF -mpreferred-stack-boundary=3"
-CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -DACPI_MACHINE_WIDTH=64 -DACPI_USE_SYSTEM_CLIB -DACPI_SINGLE_THREADED -DACPI_MISALIGNMENT_NOT_SUPPORTED -DACPI_DATA_ALIGNMENT=8 -D_OSI_MONOLITHIC"
+CFLAGS="$CFLAGS -D_KERNEL -DACPI_LIBRARY -mcmodel=kernel -fno-builtin -nostdlib -fno-asynchronous-unwind-tables -fno-strict-aliasing"
+CFLAGS="$CFLAGS -DACPI_DEBUGGER_OFF -fno-common -DACPI_DEBUG_OUTPUT -DACPI_DISASSEMBLER_OFF -mpreferred-stack-boundary=3"
+CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -DACPI_MACHINE_WIDTH=64 -ACPI_MACHINE_WIDTH=64 -DACPI_USE_SYSTEM_CLIB -DACPI_SINGLE_THREADED -DACPI_MISALIGNMENT_NOT_SUPPORTED -DACPI_DATA_ALIGNMENT=8 -D_OSI_MONOLITHIC"
 
 echo "Компиляция ядра ACPICA..."
 

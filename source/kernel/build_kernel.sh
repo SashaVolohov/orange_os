@@ -4,7 +4,7 @@ set -e
 INCLUDES="-I./include -I../apps/include"
 
 CFLAGS="-c -m64 -ffreestanding -mno-red-zone -mno-mmx -mno-sse -fno-pic -fno-stack-protector -fno-pie -O2"
-CFLAGS="$CFLAGS -D_KERNEL -mcmodel=large -fno-builtin -fno-asynchronous-unwind-tables"
+CFLAGS="$CFLAGS -D_KERNEL -mcmodel=kernel -fno-builtin -fno-common -fno-asynchronous-unwind-tables -fno-strict-aliasing -nostdlib"
 CFLAGS="$CFLAGS -mpreferred-stack-boundary=3"
 CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -D_OSI_MONOLITHIC"
 

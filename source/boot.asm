@@ -91,7 +91,7 @@ dap_lba:
 
 msg_no_active db "Active partition not found!", 13, 10, "Press CTRL+ALT+DEL to restart.", 13, 10, 0
 msg_error     db "A disk read error occurred", 13, 10, "Press CTRL+ALT+DEL to restart.", 13, 10, 0
-msg_invalid   db "Invalid VBR signature", 13, 10, "Press CTRL+ALT+DEL to restart.", 13, 10, 0
+msg_invalid   db "Invalid system disk", 13, 10, "Press CTRL+ALT+DEL to restart.", 13, 10, 0
 
 drive_number db 0
 

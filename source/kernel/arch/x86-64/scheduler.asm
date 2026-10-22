@@ -11,6 +11,8 @@ TSS64_iomap_base equ 102
 
 section '.text' executable align 16
 
+public create_task
+
 align 16
 tss0:
     times 104 db 0

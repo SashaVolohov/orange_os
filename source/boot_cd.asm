@@ -196,7 +196,7 @@ read_sector:
 .error:
     mov si, msg_read_error
     call print_string
-    jmp reboot 
+    jmp reboot
 
 print_string:
     pushad
@@ -222,7 +222,7 @@ reboot:
     int 19h
 
 filename        db "BOOTMGR", 0
-msg_press_key   db "Press any key to boot from CD", 0
+msg_press_key   db "Press any key to boot from CD or DVD", 0
 msg_missing     db "BOOTMGR is missing.", 13, 10, "Press CTRL+ALT+DEL to restart.", 13, 10, 0
 msg_read_error  db "CD-ROM Read Error.", 13, 10, 0
 msg_newline     db 13, 10, 0 

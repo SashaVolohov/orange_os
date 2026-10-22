@@ -33,6 +33,8 @@ public flip_buffers
 public spin_lock
 public spin_unlock
 
+extrn set_pixel
+
 MAX_PROCESSES equ 32
 
 TASK_STATE_EMPTY   equ 0
@@ -63,55 +65,61 @@ MSR_LSTAR   equ 0xC0000082
 MSR_SFMASK  equ 0xC0000084
 
 
-draw_pixel: ; r15d - x, r14d - y, cl - R, bh - G, bl - B, ch - alpha
+draw_pixel:
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
 
-push rsi
-push rax
-push r8
-push rax
-push rdx
+    mov rdi, 0
+    mov rsi, 0
+    mov rdx, 0
+    mov r9, 0
+    mov r8, 0
+    mov edi, r15d
+    mov esi, r14d
 
-cmp r15d, 800
-jae .exit
+    mov rax, [rsp + 96]
+    movzx edx, al
 
-cmp r14d, 600
-jae .exit
+    shr rax, 8
+    movzx r9d, al
 
-mov rsi, 0
-mov esi, [lfb_buffer_addr]
+    mov rax, [rsp + 104]
+    movzx r8d, al
+    
+    shr rax, 8
+    movzx ecx, al
 
-mov rax, 0
-mov eax, r14d
-mov r8, 0
-mov r8w, [vbe_hor_size]
-mul r8d
+    call set_pixel
 
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov rax, 0
-mov eax, r15d
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov [esi], bl
-mov [esi+1], bh
-mov [esi+2], cl
-mov [esi+3], ch
-
-.exit:
-
-pop rdx
-pop rax
-pop r8
-pop rax
-pop rsi
-
-ret
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
 
 draw_mouse_pixel: ; r15d - x, r14d - y, cl - R, bh - G, bl - B, ch - alpha
 
@@ -121,10 +129,14 @@ push r8
 push rax
 push rdx
 
-cmp r15d, 800
+mov ax, [vbe_hor_size]
+sub ax, 1
+cmp r15w, ax
 jae .exit
 
-cmp r14d, 600
+mov ax, [vbe_ver_size]
+sub ax, 1
+cmp r14w, ax
 jae .exit
 
 mov rsi, 0
@@ -169,8 +181,18 @@ push rsi
 push rax
 push r8
 
+mov ax, [vbe_hor_size]
+sub ax, 1
+cmp r15w, ax
+jae .exit
+
+mov ax, [vbe_ver_size]
+sub ax, 1
+cmp r14w, ax
+jae .exit
+
 mov rsi, 0
-mov esi, [lfb_buffer_addr]
+mov esi, [lfb_mouse_addr]
 
 mov rax, 0
 mov eax, r14d
@@ -194,6 +216,8 @@ mov bl, [esi]
 mov bh, [esi+1]
 mov cl, [esi+2]
 mov ch, [esi+3]
+
+.exit:
 
 pop r8
 pop rax

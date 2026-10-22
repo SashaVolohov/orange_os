@@ -11,6 +11,10 @@
 #include "pci.h"
 #include "nvme.h"
 #include "xhci.h"
+#include "gui.h"
+#include "setup.h"
+
+int setup_drive_id = 0;
 
 typedef struct {
     char name[40];
@@ -51,14 +55,24 @@ void Hold() {
     }
 }
 
+static button_t btn_error_ata_ok   = { .rel_x = 5,  .rel_y = 40, .width = 80, .height = 24, .text = "OK",   .is_pressed = 0 };
+
+void draw_error_ata_window(const window_t* win, int bx, int by, int bw, int bh) {
+
+    kprintf(bx + 5, by + 5, 0x00, 0x00, 0x00, 0xFF, "The drive controller returned an error during a read/write attempt.\nThe installation program cannot proceed.");
+
+    draw_button(bx, by, &btn_error_ata_ok);
+}
+
+void mouse_error_ata_window(const window_t* win, int click_x, int click_y, int is_left_pressed) {
+    if (is_button_clicked(&btn_error_ata_ok, click_x, click_y, is_left_pressed)) {
+        btn_error_ata_ok.is_pressed = 0;
+        ((window_t*)win)->is_free = 0; 
+    }
+}
+
 void SetupATAError() {
-
-    clear_setup_screen();
-
-    t_print("The IDE controller returned an error during a read/write attempt.", 3, 4, 0x1F);
-    t_print("The installation program cannot proceed.", 3, 5, 0x1F);
-    update_status_bar("F3=Exit");
-    Hold();
+    createWindow(200, 200, 300, 150, "OrangeOS Setup - Error", draw_error_ata_window, mouse_error_ata_window);
 }
 
 void tprintf(uint8_t x, uint8_t y, uint8_t color, const char *fmt, ...) {
@@ -523,7 +537,7 @@ void SetupCopyFiles(uint64_t start_lba, uint64_t sector_count, int disk_id) {
         KeBugCheck(0x20);
     }
 
-    read_atapi_sector((void*)(uintptr_t)root_cd_buffer, root_lba, 1);
+    read_atapi_sector((void*)(uintptr_t)root_cd_buffer, root_lba, 1, 0xB0);
 
     for(int i = 0; i < 2; i++) {
 
@@ -547,7 +561,7 @@ void SetupCopyFiles(uint64_t start_lba, uint64_t sector_count, int disk_id) {
             KeBugCheck(0x20);
         }
 
-        read_atapi_sector((void*)virtual_to_physical(pt_begin, setup_file_buffer), file_lba, (file_size + 2047) / 2048);
+        read_atapi_sector((void*)virtual_to_physical(pt_begin, setup_file_buffer), file_lba, (file_size + 2047) / 2048, 0xB0);
 
         status = fat32_write_file(disk_id, start_lba, list_of_files[i][1], (void*)setup_file_buffer, file_size);
 
@@ -584,7 +598,7 @@ void SetupCopyFiles(uint64_t start_lba, uint64_t sector_count, int disk_id) {
         KeBugCheck(0x20);
     }
 
-    read_atapi_sector((void*)virtual_to_physical(pt_begin, mbr_cd_buffer), file_lba, (file_size + 2047) / 2048);
+    read_atapi_sector((void*)virtual_to_physical(pt_begin, mbr_cd_buffer), file_lba, (file_size + 2047) / 2048, 0xB0);
     memcpy(mbr_buffer, (void*)mbr_cd_buffer, 446);
 
     MBR_Sector* mbr = (MBR_Sector*)mbr_buffer;
@@ -621,7 +635,7 @@ void SetupCopyFiles(uint64_t start_lba, uint64_t sector_count, int disk_id) {
         KeBugCheck(0x20);
     }
 
-    read_atapi_sector((void*)virtual_to_physical(pt_begin, (uint64_t)vbr_0_buffer), file_lba, (file_size + 2047) / 2048);
+    read_atapi_sector((void*)virtual_to_physical(pt_begin, (uint64_t)vbr_0_buffer), file_lba, (file_size + 2047) / 2048, 0xB0);
 
     fat32_vbr_t real_vbr;
     status = disk_read(disk_id, start_lba + 0, 1, (uint64_t)&real_vbr);
@@ -656,7 +670,7 @@ void SetupCopyFiles(uint64_t start_lba, uint64_t sector_count, int disk_id) {
         KeBugCheck(0x20);
     }
 
-    read_atapi_sector((void*)virtual_to_physical(pt_begin, (uint64_t)vbr_1_buffer), file_lba, (file_size + 2047) / 2048);
+    read_atapi_sector((void*)virtual_to_physical(pt_begin, (uint64_t)vbr_1_buffer), file_lba, (file_size + 2047) / 2048, 0xB0);
     disk_write(disk_id, start_lba+2, 4, vbr_1_buffer);
 
     Hold();
@@ -909,6 +923,60 @@ void ShowPartitions(int disk_id, Drive* drive) {
         }
 
     }
+}
+
+static button_t btn_error_drive_ok   = { .rel_x = 5,  .rel_y = 40, .width = 80, .height = 24, .text = "OK",   .is_pressed = 0 };
+
+void draw_error_drive_window(const window_t* win, int bx, int by, int bw, int bh) {
+
+    kprintf(bx + 5, by + 5, 0x00, 0x00, 0x00, 0xFF, "No disks were detected on this device.\nThe installation program cannot proceed.");
+
+    draw_button(bx, by, &btn_error_drive_ok);
+}
+
+void mouse_error_drive_window(const window_t* win, int click_x, int click_y, int is_left_pressed) {
+    if (is_button_clicked(&btn_error_drive_ok, click_x, click_y, is_left_pressed)) {
+        btn_error_drive_ok.is_pressed = 0;
+        ((window_t*)win)->is_free = 0; 
+    }
+}
+
+static button_t btn_setup_welcome_next   = { .rel_x = 410,  .rel_y = 90, .width = 80, .height = 24, .text = "Next",   .is_pressed = 0 };
+
+void draw_setup_welcome_window(const window_t* win, int bx, int by, int bw, int bh) {
+
+    kprintf(bx + 5, by + 5, 0x00, 0x00, 0x00, 0xFF, "Welcome to Setup.\n\nThis portion of the Setup prepares OrangeOS to run on your computer.\n\nTo set up OrangeOS now, press Next");
+
+    draw_button(bx, by, &btn_setup_welcome_next);
+}
+
+void mouse_setup_welcome_window(const window_t* win, int click_x, int click_y, int is_left_pressed) {
+    if (is_button_clicked(&btn_setup_welcome_next, click_x, click_y, is_left_pressed)) {
+
+        int status = disk_read(setup_drive_id, 0, 1, (uint64_t)&mbr_buffer);
+        if(status != ATA_SUCCESS) SetupATAError();
+
+        btn_setup_welcome_next.is_pressed = 0;
+        ((window_t*)win)->is_free = 0;
+    }
+}
+
+void KeSetupGraphic() {
+
+    for(int i = 0; i < get_drives_count(); i++) {
+        if(get_disk(i)->atapi == 0) {
+            setup_drive_id = i;
+            break;
+        }
+
+        if(i+1 == get_drives_count()) {
+            createWindow(200, 200, 300, 150, "OrangeOS Setup - Error", draw_error_drive_window, mouse_error_drive_window);
+            return;
+        }
+    }
+
+    createWindow(175, 220, 500, 150, "OrangeOS Setup", draw_setup_welcome_window, mouse_setup_welcome_window);
+
 }
 
 void KiSetup() {

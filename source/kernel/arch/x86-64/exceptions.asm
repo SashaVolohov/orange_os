@@ -66,9 +66,6 @@ ret
 
 clear_screen:
 
-cmp [lfb_buffer_addr], 0
-je text_bsod
-
 mov rsi, 0
 mov esi, [lfb_buffer_addr]
 

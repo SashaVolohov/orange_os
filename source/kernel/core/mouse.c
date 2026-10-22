@@ -1,6 +1,8 @@
 #include "core.h"
 #include "gui.h"
 #include "calculator.h"
+#include "notepad.h"
+#include "settings.h"
 
 extern int is_start_pressed;
 extern int is_start_menu_open;
@@ -8,70 +10,81 @@ extern int active_menu_item;
 
 static window_t* dragging_window = NULL;
 
+extern uint8_t os_state;
+extern int window_in_focus;
+
 void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
 
-    int menu_w = 160;
-    int menu_h = 150;
-    int menu_x = 5;
-    int menu_y = TASKBAR_Y - menu_h;
+    if(os_state == 1) {
 
-    if (mx >= 5 && mx <= 75 && my >= (TASKBAR_Y + 5) && my <= (TASKBAR_Y + 35)) {
-        if (is_left_button_pressed) {
-            is_start_menu_open = 1;
-            is_start_pressed = 1;
-        } else if (!is_left_button_pressed) {
-            is_start_pressed = 0;
+        int menu_w = 160;
+        int menu_h = 220;
+        int menu_x = 5;
+        int menu_y = TASKBAR_Y - menu_h;
+
+        if (mx >= 5 && mx <= 75 && my >= (TASKBAR_Y + 5) && my <= (TASKBAR_Y + 35)) {
+            if (is_left_button_pressed) {
+                is_start_menu_open = 1;
+                is_start_pressed = 1;
+            } else if (!is_left_button_pressed) {
+                is_start_pressed = 0;
+            }
+            draw_all_windows();
+        } else {
+            if (!is_left_button_pressed) is_start_pressed = 0;
         }
-        draw_all_windows();
-    } else {
-        if (!is_left_button_pressed) is_start_pressed = 0;
-    }
 
-    if (is_start_menu_open) {
-        if (mx >= menu_x && mx <= (menu_x + menu_w) &&
-            my >= menu_y && my <= (menu_y + menu_h)) {
-            
-            int relative_y = my - (menu_y + 4);
-            int item_index = relative_y / 36;
+        if (is_start_menu_open) {
+            if (mx >= menu_x && mx <= (menu_x + menu_w) &&
+                my >= menu_y && my <= (menu_y + menu_h)) {
+                
+                int relative_y = my - (menu_y + 4);
+                int item_index = relative_y / 36;
 
-            if (item_index >= 0 && item_index < 4) {
-                active_menu_item = item_index;
+                if (item_index >= 0 && item_index < 6) {
+                    active_menu_item = item_index;
 
-                if (is_left_button_pressed) {
-                    is_start_menu_open = 0;
-                    
-                    if(active_menu_item == 0) {
-                        openCalc();
-                    } else if (active_menu_item == 1) {
-                        openDeviceManager();
-                    } else if (active_menu_item == 2) {
-                        openAbout();
-                    } else if (active_menu_item == 3) {
-                        // Команда ACPI или APM на выключение ПК
-                        // acpi_poweroff();
+                    if (is_left_button_pressed) {
+                        is_start_menu_open = 0;
+                        
+                        if(active_menu_item == 0) {
+                            openCalc();
+                        } else if (active_menu_item == 1) {
+                            openNotepad();
+                        } else if (active_menu_item == 2) {
+                            openDeviceManager();
+                        } else if(active_menu_item == 3) {
+                            openSettings();
+                        } else if (active_menu_item == 4) {
+                            openAbout();
+                        } else if (active_menu_item == 5) {
+                            // Команда ACPI или APM на выключение ПК
+                            // acpi_poweroff();
+                        }
                     }
+                } else {
+                    active_menu_item = -1;
                 }
             } else {
                 active_menu_item = -1;
-            }
-        } else {
-            active_menu_item = -1;
 
-            if (is_left_button_pressed && my < TASKBAR_Y) {
-                is_start_menu_open = 0;
+                if (is_left_button_pressed && my < TASKBAR_Y) {
+                    is_start_menu_open = 0;
+                }
             }
+
+            draw_all_windows();
+
         }
 
-        draw_all_windows();
+        if(my >= TASKBAR_Y) {
+            UpdateTaskbar(mx, my, is_left_button_pressed);
+        }
+
+        if(my >= TASKBAR_Y) return;
 
     }
-
-    if(my >= TASKBAR_Y) {
-        UpdateTaskbar(mx, my, is_left_button_pressed);
-    }
-
-    if(my >= TASKBAR_Y) return;
-    
+        
     if (is_left_button_pressed) {
 
         if (dragging_window != NULL) {
@@ -80,8 +93,11 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
             int new_y = my - dragging_window->drag_offset_y;
 
             if (new_y < 0) new_y = 0;
-            if (new_y > TASKBAR_Y - HEADER_HEIGHT - 4) {
+            if (os_state == 1 && new_y > TASKBAR_Y - HEADER_HEIGHT - 4) {
                 new_y = TASKBAR_Y - HEADER_HEIGHT - 4;
+            }
+            if(os_state == 2 && new_y > SCREEN_HEIGHT - HEADER_HEIGHT - 4) {
+                new_y = SCREEN_HEIGHT - HEADER_HEIGHT - 4;
             }
 
             if (new_x < -dragging_window->width + 40) {
@@ -150,6 +166,24 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
         }
     }
     else {
+
+        window_t *currentWindow = get_window_focus(mx, my);
+
+        if(currentWindow != NULL && currentWindow->on_mouse != NULL) {
+
+            int body_x = currentWindow->x + 2;
+            int body_y = currentWindow->y + 2 + 22;
+            int body_w = currentWindow->width - 4;
+            int body_h = currentWindow->height - 4 - 22;
+
+            int local_x = mx - body_x;
+            int local_y = my - body_y;
+
+            if (mx >= body_x && mx < (body_x + body_w) && my >= body_y && my < (body_y + body_h)) {
+                currentWindow->on_mouse(currentWindow, local_x, local_y, is_left_button_pressed);
+                draw_all_windows();
+            }
+        }
 
         if (dragging_window != NULL) {
             dragging_window->is_dragging = 0;

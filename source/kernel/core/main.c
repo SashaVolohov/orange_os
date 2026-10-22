@@ -8,9 +8,11 @@
 #include "disk.h"
 #include "gui.h"
 #include "pci.h"
+#include "mouse.h"
 #include "nvme.h"
 #include "xhci.h"
 #include "os_memory.h"
+#include "setup.h"
 
 #include "Am79C973.h"
 
@@ -24,8 +26,16 @@ uint64_t core_tss_stacks[256];
 tss64_t tss_per_cpu[256];
 
 extern uint32_t* fb_back_buffer;
+extern Drive drives[];
 
-char fs_types_mbr[256][25] = {
+uint8_t os_state = 0;
+uintptr_t background_file;
+uint64_t background_size;
+
+extern char _bss_start;
+extern char _bss_end;
+
+char fs_types_mbr[256][35] = {
     "free",
     "FAT12",
     "XENIX root",
@@ -58,7 +68,24 @@ char fs_types_mbr[256][25] = {
     "FAT32",
     "Undefined FS",
     "FAT16",
-    "Extended partition"
+    "Extended partition",
+
+    "Windows Mobile update XIP",
+    "FSo2",
+    "Oxygen Extended Partition Table",
+    "Windows Mobile boot XIP",
+    "FAT16",
+    "Undefined FS",
+    "Undefined FS",
+    "Windows Recovery Environment",
+    "Undefined FS",
+    "Undefined FS",
+    "AtheOS file system",
+    "SyllableSecure",
+    "Undefined FS",
+    "Undefined FS",
+    "Undefined FS",
+    "Undefined FS"
 };
 
 uint8_t get_lapic_id(void) {
@@ -250,6 +277,18 @@ void kprintf(int x, int y, unsigned char r, unsigned char g, unsigned char b, un
                 width = width * 10 + (*fmt - '0');
                 fmt++;
             }
+
+            int has_precision = 0;
+            int precision = -1;
+            if (*fmt == '.') {
+                has_precision = 1;
+                precision = 0;
+                fmt++;
+                while (*fmt >= '0' && *fmt <= '9') {
+                    precision = precision * 10 + (*fmt - '0');
+                    fmt++;
+                }
+            }
             
             char temp_buf[256]; 
             char *src = temp_buf;
@@ -266,7 +305,13 @@ void kprintf(int x, int y, unsigned char r, unsigned char g, unsigned char b, un
                     char *s = va_arg(args, char*);
                     if (!s) s = "(null)";
                     src = s;
-                    while (src[len]) len++;
+                    
+                    while (src[len]) {
+                        if (has_precision && len >= precision) {
+                            break;
+                        }
+                        len++;
+                    }
                     break;
                 }
                 case 'd': {
@@ -279,6 +324,23 @@ void kprintf(int x, int y, unsigned char r, unsigned char g, unsigned char b, un
                     unsigned int val_x = va_arg(args, unsigned int);
                     int_to_str(val_x, temp_buf, 16, 0);
                     while (temp_buf[len]) len++;
+                    break;
+                }
+                case 'p': {
+                    unsigned long long ptr = (unsigned long long)va_arg(args, void*);
+                    
+                    if (ptr == 0) {
+                        char *null_ptr = "(nil)";
+                        src = null_ptr;
+                        while (src[len]) len++;
+                    } else {
+                        temp_buf[0] = '0';
+                        temp_buf[1] = 'x';
+                        
+                        int_to_str(ptr, temp_buf + 2, 16, 0);
+                        
+                        while (temp_buf[len]) len++;
+                    }
                     break;
                 }
                 case '%': {
@@ -400,7 +462,7 @@ void draw_device_manager_content(const window_t* win, int bx, int by, int bw, in
 static button_t btn_ok   = { .rel_x = 20,  .rel_y = 60, .width = 80, .height = 24, .text = "OK",   .is_pressed = 0 };
 
 void draw_about_os_content(const window_t* win, int bx, int by, int bw, int bh) {
-    print_unicode("OrangeOS Alpha 1.1", bx + 20, by + 20, 0x80, 0x00, 0x00, 0xFF);
+    print_unicode("OrangeOS Alpha 1.2", bx + 20, by + 20, 0x80, 0x00, 0x00, 0xFF);
     print_unicode("Copyright(C) Alexander Volokhov, 2023-2026", bx + 20, by + 35, 0x00, 0x00, 0x00, 0xFF);
 
     draw_button(bx, by, &btn_ok);
@@ -410,7 +472,7 @@ void draw_about_os_content(const window_t* win, int bx, int by, int bw, int bh) 
 void mouse_about_os_content(const window_t* win, int click_x, int click_y, int is_left_pressed) {
     if (is_button_clicked(&btn_ok, click_x, click_y, is_left_pressed)) {
         btn_ok.is_pressed = 0;
-        ((window_t*)win)->is_free = 0; 
+        ((window_t*)win)->is_free = 0;
     }
 }
 
@@ -450,7 +512,7 @@ void draw_startup_window(const window_t* win, int bx, int by, int bw, int bh) {
 
     }
 
-    draw_button(bx, by, &btn_ok);
+    draw_button(bx, by + 30 + (15 * partitions_count), &btn_ok);
 }
 
 void lapic_wait_delivery() {
@@ -477,34 +539,6 @@ void wakeup_ap_core(uint8_t target_apic_id, uint8_t vector) {
     *LAPIC_ICR_LOW  = 0x00004600 | vector;
     
     lapic_wait_delivery();
-}
-
-typedef struct {
-    uint64_t rsp0;
-    uint64_t ist1;
-} bsp_old_stacks_t;
-
-uint64_t get_bsp_stack_top_from_initial_tss(void) {
-    uint16_t tr_selector;
-    asm volatile("str %0" : "=r"(tr_selector));
-
-    struct __attribute__((packed)) {
-        uint16_t limit;
-        uint64_t base;
-    } gdtr;
-    asm volatile("sgdt %0" : "=m"(gdtr));
-
-    uint8_t* gdt_entry = (uint8_t*)(gdtr.base + (tr_selector & 0xFFF8));
-
-    uint64_t tss_base = ((uint64_t)gdt_entry[2]) |
-                        ((uint64_t)gdt_entry[3] << 8) |
-                        ((uint64_t)gdt_entry[4] << 16) |
-                        ((uint64_t)gdt_entry[7] << 24) |
-                        ((uint64_t)*(uint32_t*)&gdt_entry[8] << 32);
-
-    tss64_t* initial_tss = (tss64_t*)tss_base;
-
-    return initial_tss->ist[1];
 }
 
 void idt_set_tss_descriptor(uint8_t apic_id, uint64_t tss_address) {
@@ -574,6 +608,12 @@ void initialize_core_tss(uint8_t apic_id, uint64_t kernel_stack_top) {
     asm volatile("ltr %0" :: "r"(tss_selector));
 }
 
+void SystemIdleProcess() {
+    while(1) {
+        asm volatile("hlt");
+    }
+}
+
 void init_logical_processors() {
 
     bsp_apic_id = get_lapic_id();
@@ -602,6 +642,8 @@ void init_logical_processors() {
         size_t trampoline_size = (char*)&trampoline_end - (char*)&trampoline_start;
         memcpy((void*)0x8000, &trampoline_start, trampoline_size);
 
+        create_task(SystemIdleProcess); // For new CPU
+
         wakeup_ap_core(boot_info->cpus_ids[i], 0x08);
 
         while(ap_running_flag == 0) {
@@ -612,9 +654,44 @@ void init_logical_processors() {
 
 }
 
+void LoadBackground() {
+    int status = iso9660_init();
+    if(status != 0) {
+        KeBugACPIError();
+    }
+
+    int64_t root_cd_buffer = alloc_page();
+    if(root_cd_buffer == 0) {
+        KeBugCheck(0x20);
+    }
+
+    read_atapi_sector((void*)(uintptr_t)root_cd_buffer, root_lba, 1, 0xB0);
+
+    uint64_t file_size = 0;
+    int64_t file_lba = iso9660_find_file((void*)(uintptr_t)root_cd_buffer, "BACK_S.BMP", 10, &file_size);
+    background_file = (uintptr_t)kmalloc(file_size + 4096);
+
+    if(file_size == 0 || file_lba == 0 || background_file == 0) {
+        asm volatile("cli");
+        kprintf(0, 0, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS could not start because the following file is missing or corrupt:\nBACK_S.BMP\nPlease re-install a copy of the above file.");
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        Hold();
+    }
+
+    read_atapi_sector((void*)background_file, file_lba, (file_size + 2047) / 2048, 0xB0);
+
+    background_size = file_size;
+}
+
 void KiInitializeKernel() {
 
+    char *bss = &_bss_start;
+    while (bss < &_bss_end) {
+        *bss++ = 0;
+    }
+
     init_double_buffering();
+    init_logical_processors();
 
     init_ahci();
     init_ata_dma();
@@ -659,7 +736,6 @@ void KiInitializeKernel() {
 
     status = init_am79c973(&am73c973_device);
     if(status != 0) {
-        createWindow(100, 200, 550, 150, "New device found", draw_network_adapter_window, NULL);
         send_test_arp_packet(am73c973_device.mac);
     }
 
@@ -670,6 +746,7 @@ void KiInitializeKernel() {
 
     //if(acpi_status != 0) {
         //createWindow(300, 200, 300, 150, "OrangeOS: Error", draw_acpi_error_text, mouse_about_os_content);
+        //Hold();
     //}
     
     Partition* bootPartition = find_boot_partition(boot_info);
@@ -677,7 +754,22 @@ void KiInitializeKernel() {
         KeBugCheck(0x22);
     }
 
-    init_logical_processors();
+    //createWindow(100, 200, 700, 200, "Калькулято КР", draw_startup_window, mouse_about_os_content);
+
+    draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
+    if(boot_info->is_setup == 0) os_state = 1;
+    else os_state = 1;
+
+    asm volatile("cli");
+    mouse_init();
+    asm volatile("sti");
+
+    LoadBackground();
+
+    if(os_state == 2) {
+        KeSetupGraphic();
+    }
+
 
     while (1) {
         draw_all_windows();

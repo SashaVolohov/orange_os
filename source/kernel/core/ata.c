@@ -136,7 +136,7 @@ int ata_dma_read_sector(uint64_t lba, uint32_t count, uint64_t target_addr, uint
         }
         
         if(!ata_irq14_fired) {
-            asm volatile("hlt"); 
+            asm volatile("hlt");
         }
     }
     

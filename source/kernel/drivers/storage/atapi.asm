@@ -70,13 +70,14 @@ atapi_send_packet:
     pop rsi
 ret
 
-read_atapi_sector: ; Input: RDI = buffer, RSI = LBA, RDX = count of sectors
+read_atapi_sector: ; Input: RDI = buffer, RSI = LBA, RDX = count of sectors, RCX = drive number
     push rbp
     mov rbp, rsp
     
     push rbx
     push r12
     push r13
+    mov [drive_port], cl
 
     mov r12, rdi
     mov r13, rdx
@@ -90,7 +91,7 @@ read_atapi_sector: ; Input: RDI = buffer, RSI = LBA, RDX = count of sectors
     call asm_make_read12_packet
 
     mov dx, ATA_REG_DRV_SEL ; Slave
-    mov al, 0xB0    
+    mov al, [drive_port]
     out dx, al
     call ata_io_wait
 
@@ -137,3 +138,5 @@ read_atapi_sector: ; Input: RDI = buffer, RSI = LBA, RDX = count of sectors
     pop rbx
     pop rbp
 ret
+
+drive_port db 0

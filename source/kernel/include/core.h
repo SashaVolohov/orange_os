@@ -36,7 +36,7 @@ extern void free_page(uint64_t addr);
 extern uintptr_t pt_begin;
 extern uint32_t root_lba;
 
-extern void     map_page(uint64_t virt, uint64_t phys, uint64_t flags);
+extern int     map_page(uint64_t virt, uint64_t phys, uint64_t flags);
 extern void     unmap_page(uint64_t virt);
 
 extern void* memcpy(void* dest, const void* src, size_t n);
@@ -55,12 +55,14 @@ extern void KeBugACPIError();
 extern void KeBugInaccesibleBootDevice();
 
 extern int64_t iso9660_init();
-extern void read_atapi_sector(void* buffer, int64_t lba, int64_t sectors_count);
+extern void read_atapi_sector(void* buffer, int64_t lba, int64_t sectors_count, uint8_t drive_number);
 extern uint64_t iso9660_find_file(const void* buffer, const char* filename, uint64_t length, uint64_t* out_size);
 
 uint32_t swap_uint32(uint32_t val);
 
 extern int64_t GDTR_64;
+
+extern int64_t create_task(void* addr);
 
 void KeBugCheck(int stopCode);
 void kprintf(int x, int y, unsigned char r, unsigned char g, unsigned char b, unsigned char alpha, const char *fmt, ...);
@@ -99,6 +101,15 @@ typedef struct {
     uint8_t  checksum;
 } edd_drive_params_t;
 
+typedef struct __attribute__((packed)) {
+    uint16_t mode_id;
+    uint16_t width;
+    uint16_t height;
+    uint8_t  bpp;
+    uint32_t physical_base_pointer;
+} boot_vbe_mode_t;
+
+
 typedef struct {
     uint16_t vbe_hor_size;
     uint16_t vbe_ver_size;
@@ -112,7 +123,10 @@ typedef struct {
     uint32_t cpu_count;
     uint8_t cpus_ids[256];
     uint64_t bsp_factory_ist1;
-} boot_info_t;
+    uint8_t is_setup;
+    uint32_t vbe_modes_count;
+    boot_vbe_mode_t* vbe_modes_list;
+} __attribute__((packed)) boot_info_t;
 
 typedef struct __attribute__((packed)) {
     uint32_t reserved0;

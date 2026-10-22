@@ -1,22 +1,15 @@
-org 0xFFFF900000000000
+org 0xFFFFFFFF80000000
 
 format ELF64
 
-public kernel_header
 public kernel_start
 public pci_devices
 public fb_front_buffer
 public lfb_buffer_addr
 public boot_info
-
-section '.text.header' writeable executable
-
-kernel_header:
-
-magic_signature db 'OEX!' ; Сигнатура ядра
-header_size dw 16 ; Размер заголовка OEX
-entry_point dq kernel_start ; Точка входа
-flags dw 2; Флаги
+public lfb_mouse_addr
+public vbe_hor_size
+public vbe_ver_size
 
 section '.text' writeable executable
 
@@ -108,11 +101,6 @@ check_popcnt:
     mov [get_used_memory_mb_ptr], rsi
 
 .clear_screen:
-
-cmp [lfb_buffer_addr], 0
-je continue
-
-call mouse_init
 
 continue:
 
@@ -301,6 +289,7 @@ mov rdi, rax
 mov rsi, 0
 mov esi, [root_lba]
 mov rdx, 1
+mov rcx, 0xB0
 call read_atapi_sector
 
 mov rdi, [root_cd_buffer]
@@ -367,7 +356,7 @@ add rax, 1
 mov rdi, [music_buffer]
 mov rsi, [setup_lba]
 mov rdx, rax
-
+mov rcx, 0xB0
 call read_atapi_sector
 
 call alloc_page
@@ -483,6 +472,182 @@ trampoline_gdt_desc:
 public trampoline_end
 trampoline_end:
 
+
+use64
+public vbe_trampoline_start
+public vbe_trampoline_end
+
+CODE32_SEL      equ 0x28 
+DATA32_SEL      equ 0x10
+CODE16_SEL      equ 0x18
+DATA16_SEL      equ 0x20
+CODE64_SEL      equ 0x08
+
+VBE_DATA_BASE       equ 0x8200
+ap_saved_rsp        equ (VBE_DATA_BASE + 0)
+ap_vbe_target_cr3       equ (VBE_DATA_BASE + 8)
+ap_mode_to_set      equ (VBE_DATA_BASE + 16)
+ap_vbe_status       equ (VBE_DATA_BASE + 18)
+ap_saved_gdtr       equ (VBE_DATA_BASE + 20)
+ap_saved_idtr       equ (VBE_DATA_BASE + 30)
+saved_gdtr_ptr      equ (VBE_DATA_BASE + 40)
+saved_idtr_ptr      equ (VBE_DATA_BASE + 50)
+vbe_jmp_address     equ (VBE_DATA_BASE + 70) ; dq
+vbe_jmp_selector    equ (VBE_DATA_BASE + 78) ; dw
+
+vbe_trampoline_start:
+    cli
+
+    mov rax, ap_saved_rsp
+    mov [rax], rsp
+    mov rax, ap_saved_gdtr
+    sgdt [rax]
+    mov rax, ap_saved_idtr
+    sidt [rax]
+
+    mov rax, saved_gdtr_ptr
+    mov word [rax], 9
+    mov qword [rax + 2], ap_saved_gdtr
+
+    mov rax, saved_idtr_ptr
+    mov word [rax], 9
+    mov qword [rax + 2], ap_saved_idtr
+
+    mov rax, tmp_gdtr_desc
+    
+    sub rax, vbe_trampoline_start
+    add rax, TRAMPOLINE_BASE
+    
+    lgdt [rax]
+
+    push CODE32_SEL
+    mov rax, TRAMPOLINE_BASE + (.lonely_32bit - vbe_trampoline_start)
+    push rax
+    retfq
+
+use32
+.lonely_32bit:
+
+    mov ax, DATA32_SEL
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov eax, cr0
+    and eax, 0x7FFFFFFF         
+    mov cr0, eax
+
+    mov ecx, 0xC0000080
+    rdmsr
+    and eax, not (1 shl 8)
+    wrmsr
+
+    jmp CODE16_SEL:(.protected_16bit - vbe_trampoline_start + TRAMPOLINE_BASE)
+
+use16
+.protected_16bit:
+    mov ax, DATA16_SEL
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov eax, cr0
+    and eax, not 1                 
+    mov cr0, eax
+
+    jmp 0x0000:(.real_mode - vbe_trampoline_start + TRAMPOLINE_BASE)
+
+.real_mode:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    
+    mov sp, TRAMPOLINE_BASE 
+
+    mov bx, real_idtr_desc - vbe_trampoline_start + TRAMPOLINE_BASE
+    lidt [bx]
+
+    mov ax, 0x4F02              
+    mov bx, [ap_mode_to_set]
+    int 0x10
+    
+    mov [ap_vbe_status], ax 
+
+    mov eax, cr0
+    or eax, 1                   
+    mov cr0, eax
+
+    jmp CODE32_SEL:(.back_to_pm32 - vbe_trampoline_start + TRAMPOLINE_BASE)
+
+use32
+.back_to_pm32:
+    mov ax, DATA32_SEL
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov ecx, 0xC0000080
+    rdmsr
+    or eax, (1 shl 8)
+    wrmsr
+
+    mov eax, [ap_vbe_target_cr3]
+    mov cr3, eax
+
+    mov eax, cr0
+    or eax, 0x80000000          
+    mov cr0, eax
+
+    push 0x08
+    mov eax, .back_to_long64 - vbe_trampoline_start + TRAMPOLINE_BASE
+    push eax
+    retf
+
+use64
+.back_to_long64:
+
+    mov rax, ap_saved_rsp
+    mov rsp, [rax]    
+
+vbe_final_destination:
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov rax, ap_saved_gdtr
+    lgdt [rax]
+    
+    mov rax, ap_saved_idtr
+    lidt [rax]
+
+    sti
+
+ret
+
+align 4
+real_idtr_desc:
+    dw 0x3FF
+    dd 0x00000000
+
+align 16
+tmp_gdt_table:
+    dq 0x0000000000000000
+    dq 0x00209a0000000000
+    dq 0x00cf92000000ffff
+    dq 0x00009a000000ffff
+    dq 0x000092000000ffff
+    dq 0x00cf9a000000ffff
+
+align 4
+tmp_gdtr_desc:
+    dw $-tmp_gdt_table - 1
+    dq (tmp_gdt_table - vbe_trampoline_start + TRAMPOLINE_BASE) 
+
+vbe_trampoline_end:
+
 file_addr dq 0
 
 loading_drive db 0
@@ -505,7 +670,6 @@ setup_lba dq 0
 setup_size dq 0
 setup_addr dq 0
 
-total_devices_text db '0x1111111111111111   devices found on this computer.',0
 concord_file db 'CONCORD.PCM'
 music_buffer dq 0
 

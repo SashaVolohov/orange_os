@@ -2,6 +2,8 @@ use64
 
 extrn handle_mouse_click
 
+public mouse_init
+
 mouse_logo:
 db 2,2,0,0,0,0,0,0,0,0,0,0
 db 2,1,2,0,0,0,0,0,0,0,0,0
@@ -89,6 +91,9 @@ ret
 
 mouse_init:
 
+push rbx
+push rax
+
 mov al, 0xA8
 call ps2_write_command
 
@@ -120,6 +125,9 @@ mov bl, 0xF4
 call mouse_write
 
 call mouse_read
+
+pop rax
+pop rbx
 
 ret
 
@@ -237,9 +245,12 @@ call handle_mouse_click
     mov dword [global_mouse_x], 0
     jmp .handle_y
 .check_max_x:
-    cmp dword [global_mouse_x], 799
+    mov r12d, 0
+    mov r12w, [vbe_hor_size]
+    sub r12w, 1
+    cmp dword [global_mouse_x], r12d
     jle .handle_y
-    mov dword [global_mouse_x], 799
+    mov dword [global_mouse_x], r12d
 
 .handle_y:
     cmp dword [global_mouse_y], 0
@@ -247,9 +258,12 @@ call handle_mouse_click
     mov dword [global_mouse_y], 0
     jmp .save_new_background
 .check_max_y:
-    cmp dword [global_mouse_y], 581
+    mov r12d, 0
+    mov r12w, [vbe_ver_size]
+    sub r12w, 1
+    cmp dword [global_mouse_y], r12d
     jle .save_new_background
-    mov dword [global_mouse_y], 581
+    mov dword [global_mouse_y], r12d
 
 .save_new_background:
     push r15

@@ -21,6 +21,7 @@ iso9660_init: ; Output - RAX 0(success), -1(error)
     mov rdi, pvd_buffer
     mov rsi, 16
     mov rdx, 1
+    mov rcx, 0xB0
     call read_atapi_sector
 
     cmp byte [pvd_buffer], 1
@@ -78,7 +79,6 @@ iso9660_find_entry: ; RDI - pvd_buffer, RSI - filename, RDX - length
 
     movzx ecx, byte [rdi + 32]
     
-    ; --- НАЧАЛО ИЗМЕНЕНИЙ ---
     cmp rcx, r14
     jb .skip_entry
     

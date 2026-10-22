@@ -89,6 +89,8 @@ draw_unicode_symbol:
     push rcx
     push rbx
 
+    mov r12, 0
+    mov r13, 0
     mov r12d, [current_unicode_x]
     mov r13d, [current_unicode_y]
     add r13d, r11d
@@ -176,6 +178,7 @@ jmp .draw_ascii_char
 
 .char_found:
 mov rdx, [rax+4]
+mov r11, 0
 mov r11w, [rax+14]
 
 call draw_unicode_symbol

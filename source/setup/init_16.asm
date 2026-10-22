@@ -11,69 +11,96 @@ mov ah, 00h
 int 10h
 
 mov ah, 01h
-mov ch, 20h
-mov cl, 00h
+mov ch, 32
+mov cl, 07h
 int 10h
 
-mov bp, orange_os_start
+mov al, 00h
+mov ah, 4Fh
+mov di, 1000h
+int 10h
+
+cmp al, 4fh
+je jbe_supported
+jmp jbe_not_supported
+
+jbe_supported:
+
+video_found:
+
+mov ax, 0000h
+mov es, ax
+mov di, 1500h
+mov ax, 4F01h
+mov cx, [vbe_mode]
+or cx, 4000h
+int 10h
+
+cmp ah, 00h
+jne search_0
+
+mov ax, [di+00h]
+and ax, 40h
+
+cmp ax, 40h
+je search_0
+
+mov ax, [di+12h]
+cmp ax, [vbe_hor_size]
+jz search_1
+jmp search_0
+
+search_1:
+mov ax, [di+14h]
+cmp ax, [vbe_ver_size]
+jz search_2
+jmp search_0
+
+search_2:
+mov al, [di+19h]
+cmp al, [vbe_color_depth]
+jz search_ended
+
+search_0:
+inc [vbe_mode]
+mov ax, 00h
+cmp ax, [vbe_mode]
+jz vbe_error
+jmp video_found
+
+jbe_not_supported:
+
+mov bp, vbe_not_supported_text
 call print_line_16
 
-mov ah, 41h
-mov bx, 55aah
-mov dl, [loading_drive]
-int 13h
+jmp while_loop
 
-jc .no_extensions
+while_loop:
+jmp while_loop
 
-cmp bx, 0aa55h
-jne .no_extensions
+vbe_error:
 
-test cx, 1
-jz .no_lba
+mov bp, vbe_not_video_mode
+call print_line_16
 
-jmp .continue
+jmp while_loop
 
-.no_extensions:
-    mov bp, no_disk_extensions
-    call print_line_16
-    hlt
-    jmp $
+search_ended:
 
-.no_lba:
-    mov bp, no_lba_extensions
-    call print_line_16
-    hlt
-    jmp $
+mov cx, [vbe_mode]
+mov ax, [di+10h]
+mov esi, [di+28h]
 
-.drive_params_error:
-    mov bp, drive_params_error_text
-    call print_line_16
-    hlt
-    jmp $
+mov [vbe_mode], cx
+mov [vbe_pitch], ax
+mov [lfb_buffer_addr], esi
 
-.continue:
-
-mov word [drive_params], 1Ah
-
-mov ah, 48h
-mov dl, [loading_drive]
-mov si, drive_params
-int 13h
-
-jc .drive_params_error
-
-mov eax, dword [drive_params + 10h]
-mov edx, dword [drive_params + 14h]
-
-; EDX:EAX теперь содержат полный объём диска в секторах.
+mov bp, kernel_loaded
+call print_line_16
 
 clc
-int 12h
 
-jc failed_get_ram
-
-cmp ax, 620
-jb small_low_memory
+call check_memory_requirements
 
 mov ebx, 0
 mov di, 1A00h
@@ -123,7 +150,40 @@ check_cpuid:
     bt      edx, 29
     jnc     .no_long_mode
 
+    mov word [drive_params], 42h
+
+    mov ah, 48h
+    mov dl, [loading_drive]
+    mov si, drive_params
+    int 13h
+
+    jc .drive_params_error
+
+    mov ax, 0x0000
+    mov es, ax
+    mov di, 0x5000
+
+    mov eax, 16
+
+    call read_sector
+
+    mov si, 0x5000
+    mov cx, 2048
+    call hash_pvd_16bit
+
+    mov [boot_pvd_hash], eax
+
+    mov [is_setup], byte 1
+
+    call gather_vbe_modes
+
     jmp set_videomode
+
+.drive_params_error:
+    mov bp, drive_params_error_text
+    call print_line_16
+    cli
+    hlt
 
 .no_cpuid:
     mov bp, no_cpuid_text
@@ -143,43 +203,37 @@ check_cpuid:
     cli
     hlt
 
+read_sector:
+    pushad
+    mov dword [dap_lba], eax
+    mov [dap_buffer_off], di
+    mov [dap_buffer_seg], es 
+
+    mov ah, 42h
+    mov dl, [loading_drive]
+    mov si, dap
+    int 13h
+    jc .error
+    popad
+    ret
+
+.error:
+    mov bp, drive_params_error_text
+    call print_line_16
+    hlt
+    jmp $
+
 set_videomode:
 
-mov ah, 06h
-mov al, 00h
-mov bh, 1Fh
-mov ch, 00h
-mov cl, 00h
-mov dh, 24
-mov dl, 79
+mov ax, 4F02h
+mov bx, [vbe_mode]
+or cx, 4000h
 int 10h
 
-mov si, orange_os_setup
-mov dh, 1
-mov dl, 0
-mov bl, 1Fh
-
-call print_string
-
-mov si, switch_to_protected_mode
-call draw_status_bar
+cmp ah,00h
+jne mode_set_error
 
 jmp 0000h:r_start
-
-failed_get_ram:
-
-mov bp, failed_to_get_ram_count
-call print_line_16
-
-hlt
-jmp $
-
-small_low_memory:
-
-mov bp, small_low_memory_text
-call print_line_16
-
-jmp $
 
 r_start:
 
@@ -203,6 +257,16 @@ or al, 1
 mov cr0, eax
 
 jmp fword 08h:startup32;
+
+mode_set_error:
+
+mov bp, mode_set_error_text
+call print_line_16
+
+jmp while_loop_16
+
+while_loop_16:
+jmp while_loop_16
 
 print_line_16:
 
@@ -243,88 +307,246 @@ int 10h
 
 ret
 
-print_string: ;   SI - string
-              ;   DH -  Y (строка 0-24)
-              ;   DL - X (столбец 0-79)
-              ;   BL - color - 1Fh(blue, white)
-    pusha
+failed_get_ram:
 
-    mov di, si
-    xor cx, cx 
-.loop_width:
-    cmp byte [di], 0
-    je .width_done
-    inc di
-    inc cx
-    jmp .loop_width
-.width_done:
-    jcxz .exit
+mov bp, failed_to_get_ram_count
+call print_line_16
 
-    mov ah, 13h
-    mov al, 01h
-    mov bh, 00h
-   
-    mov bp, si
-    int 10h
+jmp $
 
-.exit:
-    popa
+; SI - buffer, CX - count of bytes
+; EAX - checksum
+hash_pvd_16bit:
+    push cx
+    push si
+    mov eax, 2166136261
+.loop:
+    xor edx, edx
+    mov dl, [si]
+    xor eax, edx
+    imul eax, 16777619
+    inc si
+    loop .loop
+    pop si
+    pop cx
 ret
 
-draw_status_bar: ; SI - string
-    pusha
-    push es
+check_memory_requirements:
+    xor ebx, ebx
+    mov dword [total_usable_ram], 0
+    mov dword [total_usable_ram + 4], 0
 
-    mov ax, 0B800h
-    mov es, ax
-
-    mov di, 3840
+.mmap_loop:
+    mov eax, 0xE820
+    mov edx, 0x534D4150
+    mov ecx, 24
+    mov di, e820_buffer
+    int 15h
+    jc .mmap_done
     
-    mov cx, 80
-    mov ah, 70h
+    cmp eax, 0x534D4150
+    jne .mmap_done
+    
+    test ecx, ecx
+    jz .skip_entry
+    
+    cmp dword [e820_buffer.type], 1
+    jne .skip_entry
+    
+    mov eax, [e820_buffer.len_low]
+    mov edx, [e820_buffer.len_high]
+    
+    add dword [total_usable_ram], eax
+    adc dword [total_usable_ram + 4], edx
 
-.text_loop:
+.skip_entry:
+    test ebx, ebx
+    jnz .mmap_loop
+
+.mmap_done:
+
+    mov eax, dword [total_usable_ram]
+    mov edx, dword [total_usable_ram+4]
+    
+    test edx, edx
+    jnz .ram_is_ok
+    
+    cmp eax, 0x700000
+    jae .ram_is_ok
+
+    mov si, msg_newline
+    call print_string_16
+    
+    mov si, msg_ram_error
+    call print_string_16
+    
+    cli
+.halt_loop:
+    hlt
+    jmp .halt_loop
+
+.ram_is_ok:
+    ret
+
+print_string_16:
     lodsb
-    cmp al, 0
-    je .fill_loop
+    or al, al
+    jz .done
+    mov ah, 0x0E
+    int 0x10
+    jmp print_string_16
+.done:
+    ret
 
-    stosw
-    dec cx
-    jcxz .done
-    jmp .text_loop
+print_hex_32:
+    pushad
+    mov ecx, 8
+    mov ebx, eax
 
-.fill_loop:
-    mov al, ' '
-.fill_loop_run:
-    stosw
-    loop .fill_loop_run
+.loop_hex:
+    rol ebx, 4
+    mov al, bl
+    and al, 0x0F
+
+    cmp al, 9
+    jbe .is_digit
+    add al, 'A' - 10 - '0'
+.is_digit:
+    add al, '0'
+
+    mov ah, 0x0E
+    push ebx
+    xor bx, bx
+    int 10h
+    pop ebx
+    
+    loop .loop_hex
+
+    popad
+    ret
+
+gather_vbe_modes:
+    mov di, 0x4000
+    xor cx, cx
+    
+    mov bx, 0x100
+
+.loop_bruteforce:
+    cmp bx, 0x3FF
+    ja .done
+
+    push cx
+    push di
+    push bx
+
+    mov [tmp_mode_info], dword 0
+
+    mov ax, 0x4F01
+    mov cx, bx
+    mov di, tmp_mode_info
+    int 0x10
+
+    pop bx
+    pop di
+    pop cx
+
+    cmp ax, 0x004F
+    jne .next_id
+
+    mov al, [tmp_mode_info]          
+    and al, 0x90
+    cmp al, 0x90
+    jne .next_id
+
+    mov [di + 0], bx
+    
+    mov ax, [tmp_mode_info + 18]     ; width
+    mov [di + 2], ax                 
+    
+    mov ax, [tmp_mode_info + 20]     ; height
+    mov [di + 4], ax                 
+    
+    mov al, [tmp_mode_info + 25]     ; bpp
+    mov [di + 6], al                 
+
+    mov eax, [tmp_mode_info + 40]    ; LFB
+    mov [di + 7], eax                
+
+    add di, 11
+    inc cx
+
+.next_id:
+    inc bx
+    jmp .loop_bruteforce
 
 .done:
-    pop es
-    popa
-ret
+    mov word [vbe_modes_count], cx
+    ret
+
+align 4
+tmp_vbe_info:   times 512 db 0
+tmp_mode_info:  times 256 db 0
+
+hex_chars db "0123456789ABCDEF"
 
 vbe_not_supported_text db "FATAL ERROR: Your videocard or BIOS doesn't support VESA extensions.",0
 vbe_not_video_mode db "FATAL ERROR: System unable to found 800x600x32 video mode on your videocard.",0
+mode_set_error_text db "FATAL ERROR: Cannot set 800x600x32 video mode.",0
 failed_to_get_ram_count db "FATAL ERROR: Cannot get count of RAM.",0
 no_cpuid_text db "FATAL ERROR: Your processor doesn't support CPUID instruction. The system can not continue.",0
 no_cpuid_extended_text db "FATAL ERROR: Your processor doesn't support CPUID extensions. The system can not continue.",0
 no_long_mode_text db "FATAL ERROR: Your processor doesn't support x86-64 instructions. The system can not continue.",0
 small_low_memory_text db "FATAL ERROR: OrangeOS has not found enough memory. 1MB required to run OrangeOS",0
-orange_os_start db "Setup is inspecting your computer's hardware configuration...",0
-no_disk_extensions db "FATAL ERROR: Your BIOS doesn't support BIOS disk extensions. The system can not continue.",0
-no_lba_extensions db "FATAL ERROR: Your BIOS doesn't support BIOS disk LBA. The system can not continue.",0
+kernel_loaded db "Setup is inspecting your computer's hardware configuration...",0
 drive_params_error_text db "FATAL ERROR: Fail to get loading device information. The system can not continue.",0
-orange_os_setup db "OrangeOS Setup",0xD, 0xA, "====================",0
-switch_to_protected_mode db 'Setup is switching to protected mode...',0
 
 console_line db 0
 vbe_mode dw 0
 
+align 4
+dap:
+dap_size        db 16
+dap_reserved    db 0
+dap_sectors     dw 1
+dap_buffer_off  dw 0
+dap_buffer_seg  dw 0
+dap_lba         dq 0
+
+align 4
+e820_buffer:
+    .base_low   dd 0
+    .base_high  dd 0
+    .len_low    dd 0
+    .len_high   dd 0
+    .type       dd 0
+    .acpi       dd 0
+
+total_usable_ram dq 0
+
+msg_ram_error   db "OrangeOS has not found enough extended memory. 8Mb of extended", 13, 10, "memory is required to run OrangeOS. You may need to upgrade your computer.", 13, 10, 0
+msg_mmap_header db "Memory Map:", 13, 10, 0
+msg_hex_prefix  db "0x", 0
+msg_space       db "  Type: ", 0
+msg_newline     db 13, 10, 0
+msg_len_separator db "  Len: 0x", 0
+msg_type_separator db "  Type: ", 0
+
+
+boot_info:
+
 vbe_hor_size dw 800
 vbe_ver_size dw 600
 vbe_color_depth db 32
+vbe_pitch dw 0
 
 loading_drive db 0
 lfb_buffer_addr dd 0
-drive_params dq 0, 0, 0, 0
+
+drive_params dq 0, 0, 0, 0, 0, 0, 0, 0, 0
+boot_pvd_hash dd 0
+cpu_count dd 0
+cpus_temp_array rb 256
+bsp_factory_ist1 dq 0
+is_setup db 0
+vbe_modes_count dd 0
+vbe_modes_list dq 0x4000

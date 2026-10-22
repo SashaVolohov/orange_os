@@ -217,29 +217,41 @@ parse_madt:
     test r8d, 1
     jz .next_entry
 
+    movzx r9d, byte [rsi + 3]
+    
+    mov r10d, dword [cpu_count]
+    mov byte [cpus_temp_array + r10], r9b
+
     inc dword [cpu_count]
     jmp .next_entry
 
 .handle_io_apic:
+
     mov r8d, dword [rsi + 4]
     mov [io_apic_base_addr], r8
-    
+
     mov r9d, dword [rsi + 8]
     mov [io_apic_gsi_base], r9d
 
-    mov rdi, r8
-    mov rsi, r8
-    mov rdx, 0x13
     push rcx
     push rsi
     push rdx
+
+    mov r8d, dword [rsi + 4]
+    
+    mov rdi, r8
+    mov rsi, r8
+    mov rdx, 0x13
     call map_page
+    
     pop rdx
     pop rsi
     pop rcx
+    
     test rax, rax
     jz acpi_error
 
+    ; I/O APIC can be not one, but two and etc...
     jmp .next_entry
 
 .handle_interrupt_override:
@@ -260,7 +272,6 @@ madt_addr          dq 0
 lapic_base_addr    dq 0
 io_apic_base_addr  dq 0
 io_apic_gsi_base   dd 0
-cpu_count          dd 0
 
 acpi_rsdp_addr dq 0
 

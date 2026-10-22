@@ -16,7 +16,7 @@ typedef struct {
     uint8_t port2; // IDE - Primary/Secondary, SATA - reserved
     uint64_t sector_count;
     uint8_t atapi; // 0 - No ATAPI, 1 - ATAPI
-} Drive;
+} __attribute__((packed)) Drive;
 
 #pragma pack(push, 1)
 typedef struct {

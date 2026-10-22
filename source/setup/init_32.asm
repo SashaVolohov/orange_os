@@ -26,12 +26,9 @@ mov es, ax
 mov ds, ax
 mov fs, ax
 mov ss, ax
-mov esp, 7000h
+mov esp, 10000h
 mov ax, 10h
 mov gs, ax
-
-mov esi, switch_to_long_mode
-call draw_status_bar_pm_flat
 
 mov eax, cr4
 or eax, 1 shl 5
@@ -76,39 +73,3 @@ mov cr0, eax
 lgdt [GDTR_64]
 
 jmp 08h:long_start
-
-draw_status_bar_pm_flat: ; ESI - text
-    pushad
-
-    mov edi, 0xB8000
-    add edi, 3840
-    
-    mov ecx, 80
-    mov ah, 70h
-
-.text_loop:
-    mov al, [esi]
-    inc esi
-    cmp al, 0
-    je .fill_loop
-
-    mov [edi], ax
-    add edi, 2
-    dec ecx
-    jz .done
-    jmp .text_loop
-
-.fill_loop:
-    mov al, ' '
-.fill_loop_run:
-    jecxz .done
-    mov [edi], ax
-    add edi, 2
-    dec ecx
-    jmp .fill_loop_run
-
-.done:
-    popad
-ret
-
-switch_to_long_mode db 'Setup is switching to long mode...',0
