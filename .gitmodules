@@ -1,4 +1,0 @@
-[submodule "source/BearSSL"]
-	ignore = dirty
-[submodule "source/lwip"]
-	ignore = dirty
