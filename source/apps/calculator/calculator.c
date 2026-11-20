@@ -1,4 +1,4 @@
-#include "gui.h"
+#include "core.h"
 
 static int calc_current_value = 0;
 static int calc_saved_value = 0;
@@ -31,20 +31,20 @@ static button_t calc_buttons[] = {
 #define NUM_CALC_BUTTONS (sizeof(calc_buttons) / sizeof(calc_buttons[0]))
 
 void draw_calculator_content(const window_t* win, int bx, int by, int bw, int bh) {
-    int disp_x = bx + 10;
-    int disp_y = by + 10;
-    int disp_w = bw - 20;
+    int disp_x = 10;
+    int disp_y = 10;
+    int disp_w = win->width - 20;
     int disp_h = 26;
 
-    draw_rect(disp_x, disp_y, disp_w, disp_h, 0xFF, 0xFF, 0xFF, 0xFF);
+    draw_window_rect(win, disp_x, disp_y, disp_w, disp_h, 0xFF, 0xFF, 0xFF, 0xFF);
     
-    draw_rect(disp_x, disp_y, disp_w, 1, 0x40, 0x40, 0x40, 0xFF);
-    draw_rect(disp_x, disp_y, 1, disp_h, 0x40, 0x40, 0x40, 0xFF);
+    draw_window_rect(win, disp_x, disp_y, disp_w, 1, 0x40, 0x40, 0x40, 0xFF);
+    draw_window_rect(win, disp_x, disp_y, 1, disp_h, 0x40, 0x40, 0x40, 0xFF);
 
-    print_unicode(calc_display_buffer, disp_x + 5, disp_y + 6, 0x00, 0x00, 0x00, 0xFF);
+    draw_window_text(win, calc_display_buffer, disp_x + 5, disp_y + 6, 0x00, 0x00, 0x00, 0xFF);
 
     for (size_t i = 0; i < NUM_CALC_BUTTONS; i++) {
-        draw_button(bx, by, &calc_buttons[i]);
+        draw_window_button(win, 0, 0, &calc_buttons[i]);
         if(calc_buttons[i].is_pressed != 0) calc_buttons[i].is_pressed = 0;
     }
 }

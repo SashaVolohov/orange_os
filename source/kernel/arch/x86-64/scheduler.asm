@@ -12,6 +12,8 @@ TSS64_iomap_base equ 102
 section '.text' executable align 16
 
 public create_task
+public total_processes
+public process_table_ptr
 
 align 16
 tss0:

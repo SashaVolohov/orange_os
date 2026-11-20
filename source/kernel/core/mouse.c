@@ -1,8 +1,10 @@
 #include "core.h"
-#include "gui.h"
 #include "calculator.h"
 #include "notepad.h"
 #include "settings.h"
+#include "explorer.h"
+#include "terminal.h"
+#include "browser.h"
 
 extern int is_start_pressed;
 extern int is_start_menu_open;
@@ -13,12 +15,19 @@ static window_t* dragging_window = NULL;
 extern uint8_t os_state;
 extern int window_in_focus;
 
+void window_click_handler(void* data) {
+    task_event_mouse_click_t* task_event_mouse_click = (task_event_mouse_click_t*)data;
+    task_event_mouse_click->window->on_mouse(task_event_mouse_click->window, task_event_mouse_click->mouse_x, task_event_mouse_click->mouse_y, 1);
+    kfree(task_event_mouse_click);
+    return;
+}
+
 void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
 
     if(os_state == 1) {
 
         int menu_w = 160;
-        int menu_h = 220;
+        int menu_h = 340;
         int menu_x = 5;
         int menu_y = TASKBAR_Y - menu_h;
 
@@ -29,7 +38,6 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
             } else if (!is_left_button_pressed) {
                 is_start_pressed = 0;
             }
-            draw_all_windows();
         } else {
             if (!is_left_button_pressed) is_start_pressed = 0;
         }
@@ -41,25 +49,30 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
                 int relative_y = my - (menu_y + 4);
                 int item_index = relative_y / 36;
 
-                if (item_index >= 0 && item_index < 6) {
+                if (item_index >= 0 && item_index < 9) {
                     active_menu_item = item_index;
 
                     if (is_left_button_pressed) {
                         is_start_menu_open = 0;
                         
                         if(active_menu_item == 0) {
+                            openFileExplorer();
+                        } else if(active_menu_item == 1) {
+                            launch_browser();
+                        } else if(active_menu_item == 2) {
                             openCalc();
-                        } else if (active_menu_item == 1) {
+                        } else if (active_menu_item == 3) {
                             openNotepad();
-                        } else if (active_menu_item == 2) {
-                            openDeviceManager();
-                        } else if(active_menu_item == 3) {
-                            openSettings();
                         } else if (active_menu_item == 4) {
+                            openDeviceManager();
+                        } else if(active_menu_item == 5) {
+                            open_terminal_app();
+                        } else if(active_menu_item == 6) {
+                            openSettings();
+                        } else if (active_menu_item == 7) {
                             openAbout();
-                        } else if (active_menu_item == 5) {
-                            // Команда ACPI или APM на выключение ПК
-                            // acpi_poweroff();
+                        } else if (active_menu_item == 8) {
+                            acpi_os_shutdown();
                         }
                     }
                 } else {
@@ -72,8 +85,6 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
                     is_start_menu_open = 0;
                 }
             }
-
-            draw_all_windows();
 
         }
 
@@ -103,14 +114,12 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
             if (new_x < -dragging_window->width + 40) {
                 new_x = -dragging_window->width + 40;
             }
-            // То же самое для правого края экрана
             if (new_x > SCREEN_WIDTH - 40) {
                 new_x = SCREEN_WIDTH - 40;
             }
 
             dragging_window->x = new_x;
             dragging_window->y = new_y;
-            draw_all_windows();
             return;
         }
 
@@ -128,12 +137,17 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
             int btn_min_y = active_window->y + 5;
             int btn_max_y = btn_min_y + 16;
 
-            if (mx >= btn_min_x && mx < btn_max_x && my >= btn_min_y && my < btn_max_y) {
-                kfree(active_window->title);
+            if (mx >= btn_min_x && mx < btn_max_x && my >= btn_min_y && my < btn_max_y) { // Close button
                 active_window->is_free = 0;
                 dragging_window = NULL;
 
-                draw_all_windows();
+                return;
+            }
+
+            if (mx >= btn_min_x-20 && mx < btn_max_x-20 && my >= btn_min_y && my < btn_max_y) { // Collapse button
+                active_window->is_visible = 0;
+                dragging_window = NULL;
+
                 return;
             }
 
@@ -156,12 +170,15 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
                 if (active_window->on_mouse != NULL) {
                     int local_x = mx - body_x;
                     int local_y = my - body_y;
+
+                    task_event_mouse_click_t* ev = kmalloc(sizeof(task_event_mouse_click_t));
+                    ev->window = active_window;
+                    ev->mouse_x = local_x;
+                    ev->mouse_y = local_y;
                     
-                    active_window->on_mouse(active_window, local_x, local_y, is_left_button_pressed);
+                    push_deferred_task(window_click_handler, (void*)ev);
                 }
             }
-
-            draw_all_windows();
 
         }
     }
@@ -181,7 +198,6 @@ void handle_mouse_click(int mx, int my, int is_left_button_pressed) {
 
             if (mx >= body_x && mx < (body_x + body_w) && my >= body_y && my < (body_y + body_h)) {
                 currentWindow->on_mouse(currentWindow, local_x, local_y, is_left_button_pressed);
-                draw_all_windows();
             }
         }
 

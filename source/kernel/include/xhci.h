@@ -124,10 +124,12 @@ typedef struct {
     uint32_t* bulk_in_ring_virt;
     uint64_t  bulk_in_ring_phys;
     int       bulk_in_idx;
+    uint8_t bulk_in_cycle;
 
     uint32_t* bulk_out_ring_virt;
     uint64_t  bulk_out_ring_phys;
     int       bulk_out_idx;
+    uint8_t bulk_out_cycle;
 
     uint8_t bulk_in_burst;
     uint8_t bulk_out_burst;
@@ -137,9 +139,21 @@ typedef struct {
     int       ep0_idx;
 
     int device_addresed;
+    int config_returned;
+    int config_configurated;
+    int device_opened;
+
+    usb_config_descriptor_t* cfg;
 
     uint64_t desc_buffer_phys;
     uint32_t* desc_buffer_virt;
+
+    uint64_t expected_csw_trb_phys;
+    volatile uint8_t io_completed;
+
+    uint8_t ready_for_storage;
+
+    uint8_t interface_number;
 
 } usb_device_t;
 
@@ -196,6 +210,9 @@ typedef struct {
 #define TRB_TYPE_NORMAL         1
 
 #define XHCI_EP_ID(ep_num, is_in) (((ep_num) * 2) + ((is_in) ? 1 : 0))
+#define PORTSC_PRESERVE_MASK (PORTSC_RWC_MASK | PORTSC_PED)
+
+extern usb_device_t usb_devices[MAX_USB_DEVICES];
 
 pci_device_t* find_xhci_controller();
 uint64_t get_xhci_base_address(pci_device_t* xhci);
@@ -217,4 +234,15 @@ void xhci_set_configuration(uintptr_t xhci_base, uint8_t slot_id, uint8_t config
 void xhci_get_configuration_descriptor(uintptr_t xhci_base, uint8_t slot_id);
 void xhci_get_full_configuration_descriptor(uintptr_t xhci_base, uint8_t slot_id, uint16_t total_length);
 void xhci_configure_bulk_endpoints(uint8_t slot_id, uint8_t bulk_in, uint8_t bulk_out, uint16_t max_packet_size);
-void xhci_usb_read_sector(uintptr_t xhci_base, uint8_t slot_id, uint32_t lba_block);
+int xhci_usb_read_sector(uintptr_t xhci_base, uint8_t slot_id, uint32_t lba_block);
+int xhci_disk_read_sector(int slot_id, uint64_t lba, uint64_t target_addr);
+void xhci_bios_handoff(uintptr_t xhci_base);
+void intel_xhci_route_ports(pci_device_t* xhci);
+int xhci_usb_msc_init(uintptr_t xhci_base, uint8_t slot_id);
+
+typedef struct __attribute__((packed)) {
+    uint32_t dCSWSignature;
+    uint32_t dCSWTag;
+    uint32_t dCSWDataResidue;
+    uint8_t  bCSWStatus;
+} usb_ms_csw_t;

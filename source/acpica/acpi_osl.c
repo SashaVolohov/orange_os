@@ -23,7 +23,7 @@
 
 extern void*    kmalloc(uint64_t size);
 extern void     kfree(void* ptr);
-extern void     map_page(uint64_t virt, uint64_t phys, uint64_t flags);
+extern int      map_page(uint64_t virt, uint64_t phys, uint64_t flags);
 extern void     unmap_page(uint64_t virt);
 extern void     outb(uint16_t port, uint8_t value);
 extern void     outw(uint16_t port, uint16_t value);
@@ -64,8 +64,6 @@ ACPI_STATUS AcpiOsTerminate(void) {
 
 ACPI_PHYSICAL_ADDRESS AcpiOsGetRootPointer(void) {
 
-    asm volatile("ud2");
-
     if (acpi_rsdp_addr != 0) {
         return (ACPI_PHYSICAL_ADDRESS)acpi_rsdp_addr;
     }
@@ -82,10 +80,6 @@ void *AcpiOsAllocate(ACPI_SIZE Size)
 
     ptr = kmalloc(clean_size);
 
-    if(ptr == 0) {
-        asm volatile("ud2");
-    }
-
     return ptr;
 }
 
@@ -93,74 +87,45 @@ void AcpiOsFree(void* Memory) {
     kfree(Memory);
 }
 
-#define ACPI_MAX_MAP_SLOTS 32
+#define ACPI_VIRT_BASE      0xFFFFFFFF90000000
+#define PAGE_SIZE           4096
 
-typedef struct {
-    uint64_t phys_page;
-    void* virt_addr;
-    uint64_t num_pages;
-} ACPI_MAP_SLOT;
-
-static ACPI_MAP_SLOT acpi_map_slots[ACPI_MAX_MAP_SLOTS];
-static int acpi_map_slots_count = 0;
+#define PAGE_FLAGS          0x03
 
 void* AcpiOsMapMemory(ACPI_PHYSICAL_ADDRESS PhysicalAddress, ACPI_SIZE Length) {
-    asm volatile("ud2");
-    uint64_t phys_page = (uint64_t)PhysicalAddress & ~0xFFFU;
-    uint64_t offset    = (uint64_t)PhysicalAddress & 0xFFFU;
-    uint64_t num_pages = ((uint64_t)Length + offset + 4095) / 4096;
+    uint64_t offset = PhysicalAddress % PAGE_SIZE;
+    
+    uint64_t phys_page = PhysicalAddress - offset;
+    
+    uint64_t total_length = Length + offset;
+    uint64_t pages_count = (total_length + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    for (int i = 0; i < acpi_map_slots_count; i++) {
-        if (acpi_map_slots[i].phys_page == phys_page) {
-            if (acpi_map_slots[i].num_pages >= num_pages) {
-                return (void*)((uint64_t)acpi_map_slots[i].virt_addr + offset);
-            }
-        }
+    static uint64_t virtual_cursor = ACPI_VIRT_BASE;
+    uint64_t virt_start = virtual_cursor;
+    
+    virtual_cursor += pages_count * PAGE_SIZE;
+
+    for (uint64_t i = 0; i < pages_count; i++) {
+        uint64_t v_addr = virt_start + (i * PAGE_SIZE);
+        uint64_t p_addr = phys_page + (i * PAGE_SIZE);
+        
+        map_page(v_addr, p_addr, PAGE_FLAGS);
     }
 
-    uint64_t virt_start = acpi_virt_cursor;
-
-    for (uint64_t i = 0; i < num_pages; i++) {
-        uint64_t current_virt = virt_start + (i * 4096);
-        uint64_t current_phys = phys_page + (i * 4096);
-
-        asm volatile (
-            "push %%rbx\n\t push %%r12\n\t push %%r13\n\t push %%r14\n\t push %%r15\n\t"
-            "mov %[v_addr], %%rdi\n\t"
-            "mov %[p_addr], %%rsi\n\t"
-            "mov $0x3, %%rdx\n\t"
-            "call map_page\n\t"
-            "pop %%r15\n\t; pop %%r14\n\t; pop %%r13\n\t; pop %%r12\n\t; pop %%rbx"
-            : : [v_addr] "r" (current_virt), [p_addr] "r" (current_phys)
-            : "rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "memory"
-        );
-        asm volatile("invlpg (%0)" : : "r"(current_virt) : "memory");
-    }
-
-    void* result_ptr = (void*)(virt_start + offset);
-    acpi_virt_cursor += (num_pages * 4096);
-
-    if (acpi_map_slots_count < ACPI_MAX_MAP_SLOTS) {
-        acpi_map_slots[acpi_map_slots_count].phys_page = phys_page;
-        acpi_map_slots[acpi_map_slots_count].virt_addr = (void*)virt_start;
-        acpi_map_slots[acpi_map_slots_count].num_pages = num_pages;
-        acpi_map_slots_count++;
-    }
-
-    return result_ptr;
+    return (void *)(virt_start + offset);
 }
 
 void AcpiOsUnmapMemory(void* LogicalAddress, ACPI_SIZE Length) {
 
-    uint64_t virt_start = (uint64_t)LogicalAddress;
-    uint64_t offset     = virt_start & 0xFFF;
+    uint64_t virt_addr = (uint64_t)LogicalAddress;
+    uint64_t offset = virt_addr % PAGE_SIZE;
+    uint64_t virt_page = virt_addr - offset;
     
-    uint64_t num_pages = ((uint64_t)Length + offset + 4095) / 4096;
-    uint64_t virt_page = virt_start & ~0xFFF;
+    uint64_t total_length = Length + offset;
+    uint64_t pages_count = (total_length + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    for (uint64_t i = 0; i < num_pages; i++) {
-        uint64_t v = virt_page + (i * 4096);
-        unmap_page(v);
+    for (uint64_t i = 0; i < pages_count; i++) {
+        unmap_page(virt_page + (i * PAGE_SIZE));
     }
 }
 
@@ -288,7 +253,7 @@ int int_y = 0;
 
 void AcpiOsPrintf(const char *Format, ...) {
 
-    const char* real_error_message = NULL;
+    /*const char* real_error_message = NULL;
 
     asm volatile(
         "mov %%rsi, %[msg]"
@@ -303,7 +268,7 @@ void AcpiOsPrintf(const char *Format, ...) {
     } else {
         print_text(Format, 0, int_y, 255, 255, 255, 255);
         int_y += 15;
-    }
+    }*/
     
 
 }

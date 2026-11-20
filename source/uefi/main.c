@@ -53,11 +53,18 @@ typedef struct {
 } efi_system_table_t;
 
 typedef struct {
+    unsigned int red_mask;
+    unsigned int green_mask;
+    unsigned int blue_mask;
+    unsigned int reserved_mask;
+} efi_pixel_bitmask_t;
+
+typedef struct {
     unsigned int version;
     unsigned int horizontal_resolution;
     unsigned int vertical_resolution;
     int pixel_format;
-    unsigned int pixel_information;
+    efi_pixel_bitmask_t pixel_information;
     unsigned int pixels_per_scan_line;
 } efi_graphics_output_mode_information_t;
 
@@ -103,17 +110,21 @@ efi_status_t efi_main(efi_handle_t image_handle, efi_system_table_t *system_tabl
 
     system_table->con_out->output_string(system_table->con_out, L"Searching for GOP...\r\n");
     efi_guid_t gop_guid = { 
-        0x7126830c, 
-        0x3830, 
-        0x41a5, 
-        { 0xa6, 0x21, 0x22, 0x5b, 0x96, 0xa1, 0x91, 0xb0 } 
+        0x9042a9de, 
+        0x23dc, 
+        0x4a38, 
+        { 0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a } 
     };
     
     efi_graphics_output_protocol_t *gop = 0;
 
+    while(1) { __asm__("hlt"); }
+
     efi_status_t status = system_table->boot_services->locate_protocol(&gop_guid, 0, (void**)&gop);
 
     print_status(system_table->con_out, status);
+
+    while(1) { __asm__("hlt"); }
 
     if (status == 0 && gop != 0 && gop->mode != 0) {
         system_table->con_out->output_string(system_table->con_out, L"GOP Found! Filling screen...\r\n");

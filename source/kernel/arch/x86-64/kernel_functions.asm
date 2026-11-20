@@ -33,6 +33,9 @@ public flip_buffers
 public spin_lock
 public spin_unlock
 
+public delay_loop
+public kbhit
+
 extrn set_pixel
 
 MAX_PROCESSES equ 32
@@ -43,20 +46,20 @@ TASK_STATE_RUNNING equ 2
 TASK_STATE_SLEEP   equ 3
 TASK_STATE_ZOMBIE  equ 4
 
-PCB_rax    equ 0
-PCB_rbx    equ 8
-PCB_rcx    equ 16
-PCB_rdx    equ 24
-PCB_rsi    equ 32
-PCB_rdi    equ 40
-PCB_rbp    equ 48
-PCB_rsp    equ 56
-PCB_rip    equ 64
-PCB_rflags equ 72
-PCB_cr3    equ 80
-PCB_pid    equ 88
-PCB_state  equ 96
-PCB_ticks  equ 104
+PCB_name            equ 0
+PCB_fpu_state       equ 8
+PCB_rcx             equ 16
+PCB_rdx             equ 24
+PCB_rsi             equ 32
+PCB_rdi             equ 40
+PCB_rbp             equ 48
+PCB_rsp             equ 56
+PCB_rip             equ 64
+PCB_rflags          equ 72
+PCB_cr3             equ 80
+PCB_pid             equ 88
+PCB_state           equ 96
+PCB_ticks           equ 104
 
 struct_pcb_size = 112
 
@@ -838,20 +841,23 @@ memcmp:
     jz .equal
     mov rcx, rdx
     cld
+
 .loop_memcmp:
     mov al, [rdi]
-    mov bl, [rsi]
-    cmp al, bl
+    mov r8b, [rsi]
+    cmp al, r8b
     jne .diff
     inc rdi
     inc rsi
     loop .loop_memcmp
+
 .equal:
     xor rax, rax
     ret
+
 .diff:
     movzx rax, al
-    movzx rcx, bl
+    movzx rcx, r8b
     sub rax, rcx
     ret
 
@@ -1096,6 +1102,18 @@ getch: ; RAX - key
     pop rbx
 ret
 
+kbhit:
+    mov rax, [kbd_buf_head]
+    cmp rax, [kbd_buf_tail]
+    jne .has_data
+
+    xor eax, eax
+    ret
+
+.has_data:
+    mov eax, 1
+    ret
+
 init_syscall_interface:
     push rax
     push rdx
@@ -1200,6 +1218,18 @@ pop rax
 spin_unlock:
     mov dword [rdi], 0
 ret
+
+delay_loop:
+    test rdi, rdi
+    jz .done
+.loop:
+    mov al, 0
+    out 0x80, al
+
+    dec rdi
+    jnz .loop
+.done:
+    ret
 
 get_string_from_int_32_string db "0x00000000",0
 get_string_from_int_64_string db "0x0000000000000000",0

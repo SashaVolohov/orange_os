@@ -3,12 +3,16 @@ use16
 start:
 
 mov [loading_drive], dl
+mov [loading_type], dh
 mov [console_line], byte 0
 
 mov ah, 0Fh
 int 10h
 mov ah, 00h
 int 10h
+
+mov bp, kernel_loaded
+call print_line_16
 
 mov ah, 01h
 mov ch, 32
@@ -95,35 +99,54 @@ mov [vbe_mode], cx
 mov [vbe_pitch], ax
 mov [lfb_buffer_addr], esi
 
-mov bp, kernel_loaded
-call print_line_16
-
 clc
 
 call check_memory_requirements
 
-mov ebx, 0
+xor ax, ax
+mov ds, ax
+mov es, ax
 mov di, 1A00h
+xor ebx, ebx
+xor bp, bp
 
 detecting_ram:
+    mov dword [es:di + 20], 1
+    mov eax, 0E820h
+    mov ecx, 24
+    mov edx, 0x534D4150
+    int 15h
 
-mov eax, 0E820h
-mov ecx, 24
-mov edx, 0x534D4150
-int 15h
+    jc finished_get_ram
+    cmp eax, 0x534D4150
+    jne failed_get_ram
 
-cmp eax, 0x534D4150
-jne failed_get_ram
+    cmp cl, 20
+    jb .skip_entry
 
-mov ch, 0
-add di, cx
+    cmp cl, 24
+    jb .check_len
+    test byte [es:di + 20], 1
+    jz .skip_entry
 
-mov [1800h], cx
+.check_len:
+    mov eax, [es:di + 8]
+    or eax, [es:di + 12]
+    jz .skip_entry
 
-cmp ebx, 0
-jne detecting_ram
+    add di, 24
+    inc bp
 
-mov [1900h], di
+.skip_entry:
+    test ebx, ebx
+    jnz detecting_ram
+
+finished_get_ram:
+    test bp, bp
+    jz failed_get_ram
+
+    mov word [1800h], 24
+    mov [1900h], di
 
 check_cpuid:
     pushfd
@@ -150,7 +173,7 @@ check_cpuid:
     bt      edx, 29
     jnc     .no_long_mode
 
-    mov word [drive_params], 42h
+    mov word [drive_params], 1Eh
 
     mov ah, 48h
     mov dl, [loading_drive]
@@ -158,6 +181,9 @@ check_cpuid:
     int 13h
 
     jc .drive_params_error
+
+    cmp [loading_type], 1
+    je .hash_mbr
 
     mov ax, 0x0000
     mov es, ax
@@ -172,6 +198,18 @@ check_cpuid:
     call hash_pvd_16bit
 
     mov [boot_pvd_hash], eax
+
+    jmp .hash_done
+
+.hash_mbr:
+
+mov si, 0x7C00
+mov cx, 100
+call hash_pvd_16bit
+
+mov [boot_pvd_hash], eax
+
+.hash_done:
 
     mov [is_setup], byte 1
 
@@ -227,7 +265,7 @@ set_videomode:
 
 mov ax, 4F02h
 mov bx, [vbe_mode]
-or cx, 4000h
+or bx, 4000h
 int 10h
 
 cmp ah,00h
@@ -483,6 +521,135 @@ gather_vbe_modes:
     mov word [vbe_modes_count], cx
     ret
 
+macro align16 { db (16 - ($ mod 16)) mod 16 dup 0x90 }
+
+save_gdtr: dq 0, 0
+save_idtr: dq 0, 0
+save_rsp:  dq 0
+
+align 4
+real_mode_idtr:
+    dw 0x03FF
+    dd 0x00000000
+
+use64
+call_bios_int13:
+    ; rdi = disk number
+    ; rsi = DAP address
+
+    cmp [loading_type], byte 1
+    jne .continue_int13
+
+    mov rax, [dap_structure.target_lba]
+    shl rax, 2
+    mov [dap_structure.target_lba], rax
+
+    mov cx, [dap_structure.sectors_count]
+    shl cx, 2
+    mov [dap_structure.sectors_count], cx
+
+.continue_int13:
+
+    push rbp
+    mov [save_rsp], rsp
+
+    mov edx, edi
+    mov ebx, esi
+
+    push 0x38                       
+    lea rax, [.protected_16]
+    push rax
+    retfq
+
+use16
+.protected_16:
+
+    mov ax, 0x40
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov eax, cr0
+    and eax, 0x7FFFFFFF
+    mov cr0, eax
+
+    xor eax, eax
+    mov cr3, eax
+
+    mov ecx, 0xC0000080
+    rdmsr
+    and eax, not 0x00000100
+    wrmsr
+
+    mov eax, cr0
+    and eax, 0x7FFFFFFE
+    mov cr0, eax
+
+    jmp 0x0000:.real_16
+
+.real_16:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    lidt [real_mode_idtr]
+
+    mov sp, 0x7C00
+
+    sti
+
+    mov si, bx
+    mov ah, 0x42
+    movzx edx, byte [loading_drive]
+    int 0x13
+
+    cli
+
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+
+    db 0x66, 0xEA
+    dd .protected_32
+    dw 0x48
+
+use32
+.protected_32:
+    mov ax, 0x50
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov eax, cr4
+    or eax, 1 shl 5
+    mov cr4, eax
+
+    mov eax, dword [pt_begin]
+    mov cr3, eax
+
+    mov ecx, 0xC0000080
+    rdmsr
+    or eax, 1 shl 8
+    wrmsr
+
+    mov eax, cr0
+    or eax, 1 shl 31
+    mov cr0, eax
+
+    jmp 0x08:.long_mode_64 
+
+use64
+.long_mode_64:
+    lgdt [GDTR_64]
+    LIDT [IDTR]
+
+    mov rsp, [save_rsp]
+
+    pop rbp
+
+ret
+
 align 4
 tmp_vbe_info:   times 512 db 0
 tmp_mode_info:  times 256 db 0
@@ -531,6 +698,16 @@ msg_newline     db 13, 10, 0
 msg_len_separator db "  Len: 0x", 0
 msg_type_separator db "  Type: ", 0
 
+align 4
+dap_structure:
+    .size           db 0x10
+    .reserved       db 0x00
+    .sectors_count  dw 0x00
+    .buffer_offset  dw 0x00
+    .buffer_segment dw 0x00
+    .target_lba     dq 0x00
+
+loading_type db 0
 
 boot_info:
 

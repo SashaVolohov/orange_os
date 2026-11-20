@@ -38,7 +38,19 @@ int init_ata_dma();
 int ata_dma_read_sector(uint64_t lba, uint32_t count, uint64_t target_addr, uint8_t slave);
 int ata_dma_write_sector(uint64_t lba, uint32_t count, uint64_t target_addr, uint8_t slave);
 
+int atapi_dma_read_sector(uint64_t lba, uint32_t count, uint64_t target_addr, uint8_t slave);
+
 int get_ata_disk_id_on_bus(int drive_port);
+void ata_set_udma3(uint8_t drive);
 
 extern uint8_t ata_irq14_fired;
 extern uint8_t ata_irq15_fired;
+
+#define ATA_REG_DATA       0x1F0
+#define ATA_REG_FEATURES   0x1F1
+#define ATA_REG_LBA_MID    0x1F4
+#define ATA_REG_LBA_HIGH   0x1F5
+#define ATA_REG_DRV_SEL    0x1F6
+#define ATA_REG_COMMAND    0x1F7
+#define ATA_REG_STATUS     0x1F7
+#define ATA_REG_ALT_STATUS 0x3F6

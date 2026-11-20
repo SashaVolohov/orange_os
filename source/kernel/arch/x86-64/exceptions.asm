@@ -12,6 +12,7 @@ public idt_table
 public KeBugMemoryManagement
 public KeBugACPIError
 public KeBugInaccesibleBootDevice
+public KeBugCriticalProcessDied
 
 align 16
 idt_pointer:
@@ -417,6 +418,13 @@ mov [rsp_bsod], rax
 
 call clear_screen
 
+mov rax, cr2
+
+mov r15, cr2
+mov r14, bsod_text
+mov r13, 91
+call format_string_with_64_int
+
 mov r15, [page_error_code]
 mov r14, bsod_text
 mov r13, 71
@@ -700,6 +708,27 @@ call draw_text
 
 jmp draw_dump
 
+KeBugCriticalProcessDied:
+
+mov [interrupt_number], 23
+
+cli
+
+call save_reg
+call clear_screen
+
+mov r13, bsod_23_text
+mov r15d, 0
+mov r14d, 0
+mov cl, 0FFh
+mov bh, 0FFh
+mov bl, 0FFh
+mov ch, 0FFh
+call draw_text
+
+
+jmp draw_dump
+
 draw_dump:
 
 mov r15d, [efer_bsod]
@@ -847,6 +876,7 @@ mov rdx, 480000
 
 call flip_buffers
 
+hlt
 jmp $
 
 bsod_00_text db '*** STOP: 0x00000000 (INT_DIVIDE_BY_ZERO)',0
@@ -863,7 +893,7 @@ bsod_0A_text db '*** STOP: 0x0000000A (IRQL_NOT_LESS_OR_EQUAL)',0
 bsod_0B_text db '*** STOP: 0x0000000B (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_0C_text db '*** STOP: 0x0000000C (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_0D_text db '*** STOP: 0x0000000D (KMODE_EXCEPTION_NOT_HANDLED)',0
-bsod_text db '*** STOP: 0x0000000E (PAGE_FAULT_IN_NONPAGED_AREA, 0x0000000000000000, 0x0000000000000000)',0
+bsod_text db '*** STOP: 0x0000000E (PAGE_FAULT_IN_NONPAGED_AREA, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000)',0
 bsod_0F_text db '*** STOP: 0x0000000F (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_10_text db '*** STOP: 0x00000010 (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_11_text db '*** STOP: 0x00000011 (UNEXPECTED_KERNEL_MODE_TRAP)',0
@@ -879,6 +909,7 @@ bsod_1F_text db '*** STOP: 0x0000001F (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_20_text db '*** STOP: 0x00000020 (MEMORY_MANAGEMENT)',0
 bsod_21_text db '*** STOP: 0x00000021 (ACPI_BIOS_ERROR)',0
 bsod_22_text db '*** STOP: 0x00000022 (INACCESSIBLE_BOOT_DEVICE)',0
+bsod_23_text db '*** STOP: 0x00000023 (CRITICAL_PROCESS_DIED)',0
 bsod_efer db 'EFER: 0x00000000',0
 bsod_rax db 'RAX: 0x0000000000000000, RBX: 0x0000000000000000',0
 bsod_rcx db 'RCX: 0x0000000000000000, RDX: 0x0000000000000000',0
@@ -1213,277 +1244,4 @@ init_dynamic_idt:
     pop rbp
 ret
 
-text_bsod:
-
-mov rdi, 0xB8000    
-mov rax, 0x1F201F201F201F20
-mov rcx, 500
-
-.loop:
-    mov [rdi], rax
-    add rdi, 8
-    dec rcx
-    jnz .loop
-
-    mov rsi, a_problem
-    mov dh, 0
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-    mov rsi, a_problem_hint
-    mov dh, 5
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-    mov rsi, a_problem_hint_2
-    mov dh, 6
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-    mov rsi, a_problem_hint_3
-    mov dh, 8
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-    mov rsi, a_problem_hint_4
-    mov dh, 10
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-    mov rsi, a_problem_hint_5
-    mov dh, 11
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-    mov rsi, tech_info
-    mov dh, 13
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-mov r15, [rax_bsod]
-mov r14, bsod_rax
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [rbx_bsod]
-mov r14, bsod_rax
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_rax
-mov dh, 15
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [rcx_bsod]
-mov r14, bsod_rcx
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [rdx_bsod]
-mov r14, bsod_rcx
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_rcx
-mov dh, 16
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [rsp_bsod]
-mov r14, bsod_sp
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [rbp_bsod]
-mov r14, bsod_sp
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_sp
-mov dh, 17
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [rsi_bsod]
-mov r14, bsod_rsi
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [rdi_bsod]
-mov r14, bsod_rsi
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_rsi
-mov dh, 18
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [r8_bsod]
-mov r14, bsod_r8
-mov r13, 4
-call format_string_with_64_int
-
-mov r15, [r9_bsod]
-mov r14, bsod_r8
-mov r13, 28
-call format_string_with_64_int
-
-mov rsi, bsod_r8
-mov dh, 19
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [r10_bsod]
-mov r14, bsod_r10
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [r11_bsod]
-mov r14, bsod_r10
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_r10
-mov dh, 20
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [r12_bsod]
-mov r14, bsod_r12
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [r13_bsod]
-mov r14, bsod_r12
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_r12
-mov dh, 21
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [r14_bsod]
-mov r14, bsod_r14
-mov r13, 5
-call format_string_with_64_int
-
-mov r15, [r15_bsod]
-mov r14, bsod_r14
-mov r13, 30
-call format_string_with_64_int
-
-mov rsi, bsod_r14
-mov dh, 22
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-mov r15, [rflags_bsod]
-mov r14, bsod_rflags
-mov r13, 8
-call format_string_with_64_int
-
-mov rsi, bsod_rflags
-mov dh, 23
-mov dl, 0
-mov ah, 1Fh
-call print_string_64
-
-
-mov rax, [interrupt_number]
-cmp rax, 14
-je .text_page_fault
-jmp draw_text_bsod
-
-.text_page_fault:
-    mov r15, [page_error_code]
-    mov r14, bsod_text
-    mov r13, 71
-    call format_string_with_64_int
-
-    mov r15, [page_rip_code]
-    mov r14, bsod_text
-    mov r13, 51
-    call format_string_with_64_int
-
-draw_text_bsod:
-
-mov rdi, bsod_text_0
-
-mov rbx, 8
-mov rax, [interrupt_number]
-mul rbx
-
-    add rdi, rax
-    mov rsi, [rdi]
-
-    mov dh, 3
-    mov dl, 0
-    mov ah, 1Fh
-    call print_string_64
-
-
-hlt
-jmp $
 interrupt_number dq 0
-
-a_problem db 'A problem has been detected and OrangeOS has been shutdown to prevent damage to your computer.',0
-a_problem_hint db "If this is first time you've seen this Stop error screen, restart your computer.",0
-a_problem_hint_2 db "If this screen appears again, follow these steps:",0
-a_problem_hint_3 db "Check to make sure any new hardware or software is properly installed.",0
-a_problem_hint_4 db "If problems continue, disable or remove any newly installed hardware or software",0
-a_problem_hint_5 db "Disable BIOS memory options such as caching and shadowing.",0
-
-tech_info db "Technical information:",0
-
-bsod_text_0 dq bsod_00_text
-dq bsod_01_text
-dq bsod_02_text
-dq bsod_03_text
-dq bsod_04_text
-dq bsod_05_text
-dq bsod_06_text
-dq bsod_07_text
-dq bsod_08_text
-dq bsod_09_text
-dq bsod_0A_text
-dq bsod_0B_text
-dq bsod_0C_text
-dq bsod_0D_text
-dq bsod_text
-dq bsod_0F_text
-dq bsod_10_text
-dq bsod_11_text
-dq bsod_12_text
-dq bsod_13_text
-dq bsod_14_text
-dq bsod_15_text
-dq bsod_16_text
-dq bsod_17_text
-dq bsod_17_text
-dq bsod_17_text
-dq bsod_17_text
-dq bsod_17_text
-dq bsod_1C_text
-dq bsod_1D_text
-dq bsod_1D_text
-dq bsod_1F_text
-dq bsod_20_text
-dq bsod_21_text

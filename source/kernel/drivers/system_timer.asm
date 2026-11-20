@@ -59,6 +59,8 @@ vector_handler_32:
     add rbx, rax
 
     mov [rbx + PCB_rsp], rsp
+    mov rax, [rbx + PCB_fpu_state]
+    fxsave [rax]
 
     cmp dword [rbx + PCB_state], TASK_STATE_RUNNING
     jne .skip_state_change
@@ -95,6 +97,9 @@ vector_handler_32:
     mov [current_task_index], ecx
     mov dword [rdx + PCB_state], TASK_STATE_RUNNING
 
+    mov rax, [rdx + PCB_fpu_state]
+    fxrstor [rax]
+
     mov rax, qword [rdx + 80]
     mov rbx, cr3
 
@@ -125,7 +130,5 @@ vector_handler_32:
     pop rcx
     pop rbx
     pop rax
-
-mov qword [rsp + 16], 0x200 
 
 iretq

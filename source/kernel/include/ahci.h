@@ -181,3 +181,6 @@ int ahci_atapi_get_sectors(int port);
 int ahci_wait_port(int port);
 int ahci_atapi_test_ready(int port);
 int ahci_atapi_request_sense(int port);
+void ahci_port_recover_error(ahci_port_t* port);
+int ahci_atapi_read(int port_num, uint32_t lba, uint32_t count, void* buffer);
+uint64_t get_satapi_sectors(int port);

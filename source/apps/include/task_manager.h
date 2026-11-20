@@ -1,0 +1,2 @@
+#define GRAPH_HISTORY_LEN  200
+#define GRAPH_HEIGHT       100

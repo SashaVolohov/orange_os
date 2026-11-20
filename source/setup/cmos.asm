@@ -27,34 +27,42 @@ iretq
 
 init_rtc:
     push rax
+    pushfq
+    cli
 
-    mov al, 0x0B
-    out 0x70, al
-    in al, 0x71
-    or al, 0x40
-    mov ah, al
-    mov al, 0x0B
-    out 0x70, al
-    mov al, ah
-    out 0x71, al 
-
-    mov al, 0x0A
+    mov al, 0x8A
     out 0x70, al
     in al, 0x71
     and al, 0xF0
     or al, 0x06
     mov ah, al
-    mov al, 0x0A
+
+    mov al, 0x8A
     out 0x70, al
     mov al, ah
     out 0x71, al
 
-    mov al, 0x0C
+    mov al, 0x8B
+    out 0x70, al
+    in al, 0x71
+    or al, 0x40
+    mov ah, al
+
+    mov al, 0x8B
+    out 0x70, al
+    mov al, ah
+    out 0x71, al
+
+    mov al, 0x8C
     out 0x70, al
     in al, 0x71
 
+    mov al, 0x0D
+    out 0x70, al
+
+    popfq
     pop rax
-ret
+    ret
 
 update_rtc_time:
     push rax

@@ -3,13 +3,48 @@
 #include "os_memory.h"
 #include "pci.h"
 
+struct netif g_am79c973_netif;
+static uint8_t lwip_tx_scratch[1536];
+
 int am79c973_base = 0;
 volatile struct Am79C973_TxDescriptor* tx_desc; 
 volatile struct Am79C973_RxDescriptor* rx_desc;
 uint8_t* tx_buffer;
 uint8_t* rx_buffer;
 
+extern uint32_t* fb_back_buffer;
+
 struct Am79C973_InitBlock init_block __attribute__((aligned(4)));
+
+static err_t am79c973_low_level_output(struct netif *netif, struct pbuf *p) {
+    (void)netif;
+
+    if (p->tot_len > sizeof(lwip_tx_scratch)) {
+        return ERR_BUF;
+    }
+
+    uint16_t len = pbuf_copy_partial(p, lwip_tx_scratch, p->tot_len, 0);
+
+    am79c973_send_packet(lwip_tx_scratch, len);
+
+    return ERR_OK;
+}
+
+err_t am79c973_netif_init(struct netif *netif) {
+    netif->name[0] = 'e';
+    netif->name[1] = 'n';
+    netif->output = etharp_output;
+    netif->linkoutput = am79c973_low_level_output;
+    netif->mtu = 1500;
+    netif->hwaddr_len = 6;
+
+    for (int i = 0; i < 6; i++) {
+        netif->hwaddr[i] = device_mac[i];
+    }
+
+    netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_LINK_UP;
+    return ERR_OK;
+}
 
 void init_rx_descriptor() {
 
@@ -18,6 +53,8 @@ void init_rx_descriptor() {
     if(rx_buf == 0 || rx_desc == 0) {
         KeBugCheck(0x20);
     }
+
+    rx_buffer = (uint8_t*)rx_buf;
 
     uint32_t len_field = (uint32_t)(-1518) & 0x0FFF;
     len_field |= 0xF000;
@@ -174,8 +211,10 @@ void am79c973_send_packet(const uint8_t* packet_data, uint32_t length) {
 
     outw(am79c973_base + 0x12, 0); 
     
-    uint16_t csr0 = inw(am79c973_base + 0x10);
+    inw(am79c973_base + 0x10);
     outw(am79c973_base + 0x10, 0x000A);
+
+    internet_packages_sended++;
 }
 
 void send_test_arp_packet(uint8_t* my_mac) {
@@ -194,22 +233,192 @@ void send_test_arp_packet(uint8_t* my_mac) {
 
     for(int i = 0; i < 6; i++) packet.arp.src_mac[i] = my_mac[i];
     packet.arp.src_ip[0] = 192; packet.arp.src_ip[1] = 168; 
-    packet.arp.src_ip[2] = 1;   packet.arp.src_ip[3] = 200;
+    packet.arp.src_ip[2] = 0;   packet.arp.src_ip[3] = 200;
 
     for(int i = 0; i < 6; i++) packet.arp.dst_mac[i] = 0x00;
     packet.arp.dst_ip[0] = 192; packet.arp.dst_ip[1] = 168; 
-    packet.arp.dst_ip[2] = 1;   packet.arp.dst_ip[3] = 1;
+    packet.arp.dst_ip[2] = 0;   packet.arp.dst_ip[3] = 1;
 
     am79c973_send_packet((uint8_t*)&packet, sizeof(struct FullArpPacket));
 
 }
 
-void check_incoming_packets() {
-    if (!(rx_desc->status_and_length & 0x80000000)) {
-        
-        uint32_t received_length = rx_desc->status2 & 0x0FFF; 
-        
-        rx_desc->status_and_length = 0x80000000 | ((uint16_t)(-1518) & 0x0FFF);
-        asm volatile("wbinvd" ::: "memory");
+void net_handle_arp(uint8_t* payload, uint32_t len) {
+    if (len < sizeof(struct ArpPacket)) return;
+
+    struct ArpPacket* arp = (struct ArpPacket*)payload;
+
+    if (ntohs(arp->hardware_type) != 1 || ntohs(arp->protocol_type) != 0x0800) return;
+    if (arp->hardware_len != 6 || arp->protocol_len != 4) return;
+
+    if (ntohs(arp->operation) != ARP_OP_REQUEST) return;
+
+    int ip_matches = 1;
+    for (int i = 0; i < 4; i++) {
+        if (arp->dst_ip[i] != device_ip[i]) {
+            ip_matches = 0;
+            break;
+        }
     }
+
+    if (!ip_matches) return;
+
+    struct FullArpPacket reply;
+
+    for (int i = 0; i < 6; i++) reply.eth.dest_mac[i] = arp->src_mac[i];
+    for (int i = 0; i < 6; i++) reply.eth.src_mac[i] = device_mac[i];
+    reply.eth.ethertype = htons(0x0806);
+
+    reply.arp.hardware_type = htons(1);
+    reply.arp.protocol_type = htons(0x0800);
+    reply.arp.hardware_len  = 6;
+    reply.arp.protocol_len  = 4;
+    reply.arp.operation     = htons(ARP_OP_REPLY);
+
+    for (int i = 0; i < 6; i++) reply.arp.src_mac[i] = device_mac[i];
+    for (int i = 0; i < 4; i++) reply.arp.src_ip[i] = device_ip[i];
+
+    for (int i = 0; i < 6; i++) reply.arp.dst_mac[i] = arp->src_mac[i];
+    for (int i = 0; i < 4; i++) reply.arp.dst_ip[i] = arp->src_ip[i];
+
+    am79c973_send_packet((uint8_t*)&reply, sizeof(struct FullArpPacket));
+}
+
+uint16_t net_checksum(uint16_t* addr, int count) {
+    uint32_t sum = 0;
+
+    while (count > 1) {
+        sum += *addr++;
+        count -= 2;
+    }
+
+    if (count > 0) {
+        sum += *(uint8_t*)addr;
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    return (uint16_t)(~sum);
+}
+
+void net_handle_icmp(uint8_t* payload, uint32_t len, struct IpHeader* ip) {
+    if (len < sizeof(struct IcmpHeader)) return;
+    struct IcmpHeader* icmp = (struct IcmpHeader*)payload;
+
+    if (icmp->type != 8) return;
+
+
+    struct EthernetHeader* eth = (struct EthernetHeader*)(payload - sizeof(struct IpHeader) - sizeof(struct EthernetHeader));
+    for (int i = 0; i < 6; i++) {
+        uint8_t tmp = eth->dest_mac[i];
+        eth->dest_mac[i] = eth->src_mac[i];
+        eth->src_mac[i] = tmp;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        uint8_t tmp = ip->dst_ip[i];
+        ip->dst_ip[i] = ip->src_ip[i];
+        ip->src_ip[i] = tmp;
+    }
+    ip->total_length = htons(len + sizeof(struct IpHeader)); 
+
+    icmp->type = 0;
+    
+    icmp->checksum = 0;
+    icmp->checksum = net_checksum((uint16_t*)icmp, len);
+
+    uint32_t total_packet_len = len + sizeof(struct IpHeader) + sizeof(struct EthernetHeader);
+    am79c973_send_packet((uint8_t*)eth, total_packet_len);
+}
+
+void net_handle_ipv4(uint8_t* payload, uint32_t len) {
+    if (len < sizeof(struct IpHeader)) return;
+    struct IpHeader* ip = (struct IpHeader*)payload;
+
+    for (int i = 0; i < 4; i++) {
+        if (ip->dst_ip[i] != device_ip[i]) return;
+    }
+
+    if (ip->protocol == IP_PROTO_ICMP) {
+        uint32_t ip_header_len = (ip->version_ihl & 0x0F) * 4;
+        uint8_t* icmp_payload = payload + ip_header_len;
+        uint32_t icmp_len = ntohs(ip->total_length) - ip_header_len;
+
+        net_handle_icmp(icmp_payload, icmp_len, ip);
+    }
+}
+
+void net_handle_ethernet(uint8_t* buffer, uint32_t len) {
+    struct EthernetHeader* eth = (struct EthernetHeader*)buffer;
+
+    int is_to_me = 1;
+    int is_broadcast = 1;
+    
+    for (int i = 0; i < 6; i++) {
+        if (eth->dest_mac[i] != device_mac[i]) is_to_me = 0;
+        if (eth->dest_mac[i] != 0xFF) is_broadcast = 0;
+    }
+
+    if (!is_to_me && !is_broadcast) {
+        return;
+    }
+
+    uint8_t* payload = buffer + sizeof(struct EthernetHeader);
+    uint32_t payload_len = len - sizeof(struct EthernetHeader);
+
+    uint16_t type = ntohs(eth->ethertype);
+
+    switch (type) {
+        case ETHERTYPE_ARP:
+            net_handle_arp(payload, payload_len);
+            break;
+            
+        case ETHERTYPE_IPV4:
+            net_handle_ipv4(payload, payload_len);
+            break;
+            
+        default:
+            break;
+    }
+}
+
+void check_incoming_packets() {
+    asm volatile("wbinvd" ::: "memory");
+
+    for (uintptr_t addr = (uintptr_t)rx_buffer; addr < (uintptr_t)rx_buffer + 1518; addr += 64) {
+        asm volatile("clflush (%0)" :: "r"(addr) : "memory");
+    }
+    
+    asm volatile("clflush (%0)" :: "r"(rx_desc) : "memory");
+    asm volatile("mfence" ::: "memory");
+    
+    if (rx_desc->status_and_length & 0x80000000) {
+        return; 
+    }
+
+    internet_packages_received++;
+
+    uint32_t packet_len = rx_desc->status2 & 0x0FFF;
+
+    if (packet_len >= 60) {
+        uint16_t lwip_len = (uint16_t)(packet_len - 4);
+
+        struct pbuf *p = pbuf_alloc(PBUF_RAW, lwip_len, PBUF_POOL);
+        if (p != NULL) {
+            pbuf_take(p, rx_buffer, lwip_len);
+
+            if (g_am79c973_netif.input(p, &g_am79c973_netif) != ERR_OK) {
+                pbuf_free(p);
+            }
+        }
+    }
+
+    rx_desc->status2 = 0;
+    uint32_t len_field = (uint32_t)(-1518) & 0x0FFF;
+    len_field |= 0xF000;
+    rx_desc->status_and_length = 0x80000000 | len_field;
+    
+    asm volatile("wbinvd" ::: "memory");
 }

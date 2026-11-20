@@ -3,15 +3,20 @@ KHEAP_START equ 0x700000000000
 align 8;
 
 GDT_64:
+    dq 0
 
-dq 0;
+    dw 0FFFFh, 0, 9A00h, 0AFh ; 0x08: Kernel Code 64-bit
+    dw 0FFFFh, 0, 9200h, 0AFh ; 0x10: Kernel Data 64-bit
+    dw 0FFFFh, 0, 0FA00h, 0AFh ; 0x18: User Code 64-bit
+    dw 0FFFFh, 0, 0F200h, 0AFh ; 0x20: User Data 64-bit
+    dq 0 ; TSS
+    dq 0 ; TSS
 
-dw 0FFFFh, 0, 9A00h, 0AFh;
-dw 0FFFFh, 0, 9200h, 0AFh;
-dw 0FFFFh, 0, 0FA00h, 0AFh
-dw 0FFFFh, 0, 0F200h, 0AFh
-dq 0;
-dq 0;
+    dw 0xFFFF, 0x0000, 0x9A00, 0x0000 ; Protected 16-bit Code
+    dw 0xFFFF, 0x0000, 0x9200, 0x0000 ; Protected 16-bit Data
+
+    dw 0FFFFh, 0, 9A00h, 0CFh
+    dw 0FFFFh, 0, 9200h, 0CFh
 
 label GDT_64_SIZE at $-GDT_64
 
@@ -21,36 +26,35 @@ dw GDT_64_SIZE-1
 dq GDT_64
 
 memory_init:
-
-mov rax, 1A00h
-mov rbx, 0
-mov rcx, 0
-mov rdx, 1900h
-mov bx, [rdx]
-mov r8, 1800h
-mov rdx, 0
-mov dx, [r8]
+    mov rax, 1A00h
+    movzx rbx, word [1900h]
+    xor rcx, rcx
 
 detect_memory_length:
+    cmp rax, rbx
+    jae calculate_mb
 
-add rcx, [rax+8h]
-add rax, rdx
+    cmp dword [rax + 10h], 1
+    jne skip_region
 
-cmp rax, rbx
-jne detect_memory_length
+    add rcx, [rax + 8h]
 
-; rcx - amount of RAM
+skip_region:
+    add rax, 24
+    jmp detect_memory_length
 
-mov rax, rcx
-mov rdx, 0
-mov rbx, 1048576
-div rbx
+calculate_mb:
+    mov rax, rcx
+    xor rdx, rdx
+    mov rbx, 1048576
+    div rbx
 
-add rax, 1
-
-mov [mb_memory], rax
+    test rdx, rdx
+    jz .no_round
+    inc rax
+.no_round:
+    mov [mb_memory], rax
 mov [fake_mb_memory], rax
-
 mov rax, [mb_memory]
 cmp rax, 128
 ja fake_memory
@@ -126,50 +130,58 @@ mov [pt_begin], 100000h
 
 mov rax, [mb_memory]
 shr rax, 1
-add rax, 3
+mov r8, rax
 
+mov rax, [mb_memory]
+shr rax, 10
+inc rax
+mov r9, rax
+
+mov rax, r8
+add rax, 6
 imul rax, 512
 mov rcx, rax
 
 mov rdi, 100000h
 xor rax, rax
-
 rep stosq
 
 mov rbx, 100000h
 mov eax, 101000h + 111b
 mov [rbx], eax
 
-mov rbx, 101000h
-mov eax, 102000h + 111b
-mov [rbx], eax
+mov rdi, 101000h
+mov rbx, 102000h + 111b
+mov rcx, r9
+.make_pdpt_loop:
+    mov [rdi], rbx
+    add rdi, 8
+    add rbx, 1000h
+    loop .make_pdpt_loop
 
-mov rax, [mb_memory]
-shr rax, 1
-mov ecx, eax
-
-mov edi, 102000h
-mov rbx, 103000h + 111b
+mov rcx, r8
+mov rdi, 102000h
+mov rbx, 106000h + 111b
 
 make_pd_entries_128:
-mov [rdi], rbx
-add rdi, 8
-add rbx, 1000h
-loop make_pd_entries_128
+    mov [rdi], rbx
+    add rdi, 8
 
-mov rax, [mb_memory]
-shr rax, 1
+    add rbx, 1000h
+    loop make_pd_entries_128
+
+mov rax, r8
 imul rax, 512
-mov ecx, eax
+mov rcx, rax
 
-mov edi, 103000h
+mov rdi, 106000h
 mov rbx, 0 + 111b
 
 make_pt_entries_128:
-mov [rdi], rbx
-add rdi, 8
-add rbx, 1000h
-loop make_pt_entries_128
+    mov [rdi], rbx
+    add rdi, 8
+    add rbx, 1000h
+    loop make_pt_entries_128
 
 mov [pt_end], rdi
 
@@ -186,106 +198,117 @@ cmp rax, 128
 ja videomem_more_128
 
 videomem_less_128:
+    mov r10, 100000h
 
-mov rsi, 0
-mov esi, [lfb_buffer_addr]
-shr esi, 30
+    mov eax, [lfb_buffer_addr]
+    and eax, 0xFFE00000
+    mov r11, rax
 
-mov ebx, 21000h
-mov eax, esi
-mov ecx, 8
+    mov rsi, r11
+    shr rsi, 30
+    lea rbx, [21000h + rsi * 8]
 
-mul ecx
+    test qword [rbx], 1
+    jnz .pd_exists
 
-add ebx, eax
+    mov rdi, r10
+    xor eax, eax
+    mov ecx, 512
+    rep stosq
 
-mov qword [ebx], 100000h + 111b
+    mov rax, r10
+    or rax, 11111b
+    mov [rbx], rax
+    mov r12, r10
+    add r10, 1000h
+    jmp .map_two_pt
 
-mov esi, [lfb_buffer_addr]
-and esi, 3FFFFFFFh
-shr esi, 21
+.pd_exists:
+    mov r12, [rbx]
+    mov rax, 0x000FFFFFFFFFF000
+    and r12, rax
 
-mov ebx, 100000h
-mov eax, esi
-mov ecx, 8
+.map_two_pt:
+    mov rsi, r11
+    and rsi, 0x3FFFFFFF
+    shr rsi, 21
 
-mul ecx
+    mov rax, r10
+    or rax, 11111b
+    mov [r12 + rsi * 8], rax
 
-add ebx, eax
+    add rax, 1000h
+    mov [r12 + rsi * 8 + 8], rax
 
-mov qword [ebx], 101000h + 111b
+    mov rdi, r10
+    mov rax, r11
+    or rax, 11111b
+    mov ecx, 1024
 
-mov eax, [lfb_buffer_addr]
-add eax, 111b
-mov edi, 101000h
-mov ecx, 512
+.make_entries_less:
+    stosq
+    add rax, 1000h
+    loop .make_entries_less
 
-make_video_entries:
-
-stosd
-
-add edi, 4
-add eax, 1000h
-loop make_video_entries
-
-mov [ptv_end], rdi
-
-ret
+    mov [ptv_end], rdi 
+    ret
 
 videomem_more_128:
+    mov r10, [pt_end]
 
+    mov eax, [lfb_buffer_addr]
+    and eax, 0xFFE00000
+    mov r11, rax
 
-mov rsi, 0
-mov esi, [lfb_buffer_addr]
-shr esi, 30
+    mov rsi, r11
+    shr rsi, 30
+    lea rbx, [101000h + rsi * 8]
 
-mov ebx, 101000h
-mov eax, esi
-mov ecx, 8
+    test qword [rbx], 1
+    jnz .pd_exists
 
-mul ecx
+    mov rdi, r10
+    xor eax, eax
+    mov ecx, 512
+    rep stosq
 
-add ebx, eax
+    mov rax, r10
+    or rax, 11111b
+    mov [rbx], rax
+    mov r12, r10
+    add r10, 1000h
+    jmp .map_two_pt
 
-mov r10, [pt_end]
+.pd_exists:
+    mov r12, [rbx]
+    mov rax, 0x000FFFFFFFFFF000
+    and r12, rax
 
-mov qword [ebx], r10
-add qword [ebx], 111b
+.map_two_pt:
+    mov rsi, r11
+    and rsi, 0x3FFFFFFF
+    shr rsi, 21
 
-mov esi, [lfb_buffer_addr]
-and esi, 3FFFFFFFh
-shr esi, 21
+    mov rax, r10
+    or rax, 11111b
+    mov [r12 + rsi * 8], rax
 
-mov eax, esi
-shl eax, 3
+    add rax, 1000h
+    mov [r12 + rsi * 8 + 8], rax
 
-mov rbx, r10
-add rbx, rax
+    mov rdi, r10
+    mov rax, r11
+    or rax, 11111b
+    mov ecx, 1024
 
-mov rdi, r10
-add rdi, 1000h
+.make_entries:
+    stosq
+    add rax, 1000h
+    loop .make_entries
 
-mov qword [rbx], rdi
-add qword [rbx], 111b
-
-mov eax, [lfb_buffer_addr]
-add eax, 111b
-
-mov ecx, 512
-
-make_video_entries_128:
-
-stosd
-
-add edi, 4
-add eax, 1000h
-loop make_video_entries_128
-
-mov [ptv_end], rdi
-
-
-
-ret
+    mov [pt_end], rdi
+    mov [ptv_end], rdi
+    ret
 
 allocator_init:
 

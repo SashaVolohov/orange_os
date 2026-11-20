@@ -1,18 +1,18 @@
 #!/bin/bash
 set -e
 
-INCLUDES="-I./include -I../kernel/include"
+INCLUDES="-I./include -I../kernel/include -I../lwip/src/include -I../BearSSL/inc -I../BearSSL/src"
 
 CFLAGS="-c -m64 -ffreestanding -fno-common -mno-red-zone -mno-mmx -mno-sse -fno-pic -fno-stack-protector -fno-pie -O2"
 CFLAGS="$CFLAGS -D_KERNEL -mcmodel=kernel -fno-builtin -fno-asynchronous-unwind-tables"
-CFLAGS="$CFLAGS -mpreferred-stack-boundary=3"
+CFLAGS="$CFLAGS -mpreferred-stack-boundary=4"
 CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -D_OSI_MONOLITHIC"
 
 echo "Компиляция приложений OrangeOS..."
 
 mkdir -p build_obj
 
-for file in ./calculator/*.c ./notepad/*.c ./settings/*.c; do
+for file in ./calculator/*.c ./notepad/*.c ./settings/*.c ./explorer/*.c ./task_manager/*.c ./terminal/*.c ./browser/*.c; do
     if [ -f "$file" ]; then
         dir_name=$(dirname "$file")
         file_name=$(basename "$file" .c)

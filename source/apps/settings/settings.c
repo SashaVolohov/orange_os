@@ -1,13 +1,8 @@
-#include "gui.h"
 #include "core.h"
 #include "settings.h"
 #include "os_memory.h"
 
-static button_t settings_buttons[] = {
-    { .rel_x = 10,  .rel_y = 50,  .width = 35, .height = 35, .text = "OK", .is_pressed = 0 },
-};
-
-#define NUM_SETTINGS_BUTTONS (sizeof(settings_buttons) / sizeof(settings_buttons[0]))
+checkbox_t transparency_checkbox = { .rel_x = 5,  .rel_y = 5, .box_size = 10, .text = "Enable transparency", .is_pressed = 0, .is_checked = 1 };
 
 int8_t selected_settings_id = -1;
 int8_t count_of_video = 0;
@@ -47,7 +42,7 @@ void change_screen_resolution(uint16_t target_mode_id, uint32_t width, uint32_t 
         SCREEN_HEIGHT = height;
         fb_back_buffer = new_back_buffer;
 
-        fb_front_buffer = (uint32_t*)physical_base_pointer;
+        fb_front_buffer = (uint32_t*)(uintptr_t)physical_base_pointer;
         
         lfb_buffer_addr = (uint32_t)virtual_to_physical(pt_begin, (uintptr_t)fb_back_buffer);
         lfb_mouse_addr = physical_base_pointer;
@@ -81,7 +76,6 @@ void change_screen_resolution(uint16_t target_mode_id, uint32_t width, uint32_t 
             kfree(old_back_buffer);
         }
 
-        draw_all_windows();
     } else {
         kfree(new_back_buffer);
     }
@@ -90,49 +84,53 @@ void change_screen_resolution(uint16_t target_mode_id, uint32_t width, uint32_t 
 }
 
 void mouse_settings_content(const window_t* win, int click_x, int click_y, int is_left_pressed) {
-    for (size_t i = 0; i < NUM_SETTINGS_BUTTONS; i++) {
 
-        selected_settings_id = -1;
+    int transparency_status = update_checkbox(&transparency_checkbox, click_x, click_y, is_left_pressed);
+    if(transparency_status == 1) {
+        transparency_gui = !transparency_gui;
+    }
 
-        if(click_y < 5) return;
-        if(click_y > 5+(15*count_of_video)) return;
+    selected_settings_id = -1;
 
-        selected_settings_id = (click_y - 5) / 15;
+    if(click_y < 20) return;
+    if(click_y > 20+(15*count_of_video)) return;
 
-        if(is_left_pressed) {
+    selected_settings_id = (click_y - 20) / 15;
 
-            uint8_t* raw_bytes = (uint8_t*)( (uintptr_t)boot_info->vbe_modes_list);
-            int internal_id = 0;
+    if(is_left_pressed) {
 
-            for (uint32_t i = 0; i < boot_info->vbe_modes_count; i++) {
+        uint8_t* raw_bytes = (uint8_t*)( (uintptr_t)boot_info->vbe_modes_list);
+        int internal_id = 0;
 
-                uint8_t* entry = raw_bytes + (i * 11);
-                uint16_t mode_id               = *(uint16_t*)(entry + 0);
-                uint16_t width                 = *(uint16_t*)(entry + 2);
-                uint16_t height                = *(uint16_t*)(entry + 4);
-                uint8_t  bpp                   = *(uint8_t*) (entry + 6);
-                uint32_t physical_base_pointer = *(uint32_t*)(entry + 7);
+        for (uint32_t i = 0; i < boot_info->vbe_modes_count; i++) {
 
-                if (mode_id < 0x100 || bpp != 32 || mode_id >= 0x200) {
-                    continue;
-                }
+            uint8_t* entry = raw_bytes + (i * 11);
+            uint16_t mode_id               = *(uint16_t*)(entry + 0);
+            uint16_t width                 = *(uint16_t*)(entry + 2);
+            uint16_t height                = *(uint16_t*)(entry + 4);
+            uint8_t  bpp                   = *(uint8_t*) (entry + 6);
+            uint32_t physical_base_pointer = *(uint32_t*)(entry + 7);
 
-                if(selected_settings_id == internal_id) {
-                    change_screen_resolution(mode_id, width, height, physical_base_pointer);
-                    break;
-                }
-
-                internal_id++;
+            if (mode_id < 0x100 || bpp != 32 || mode_id >= 0x200) {
+                continue;
             }
 
+            if(selected_settings_id == internal_id) {
+                change_screen_resolution(mode_id, width, height, physical_base_pointer);
+                break;
+            }
+
+            internal_id++;
         }
+
     }
+
 }
 
 void draw_settings_content(const window_t* win, int bx, int by, int bw, int bh) {
 
     if (!boot_info) {
-        print_unicode("ERROR: Boot info is null!", bx, by+5, 0x00, 0x00, 0x00, 0xFF);
+        draw_window_text(win, "ERROR: Boot info is null!", 0, 5, 0x00, 0x00, 0x00, 0xFF);
         return;
     }
 
@@ -140,6 +138,8 @@ void draw_settings_content(const window_t* win, int bx, int by, int bw, int bh) 
     int internal_id = 0;
 
     count_of_video = 0;
+
+    draw_window_rect(win, 0, 0, win->width, win->height, 0xFF, 0xFF, 0xFF, 0xFF);
 
     for (uint32_t i = 0; i < boot_info->vbe_modes_count; i++) {
 
@@ -166,9 +166,9 @@ void draw_settings_content(const window_t* win, int bx, int by, int bw, int bh) 
             colorAlpha = 0xFF;
         }
 
-        draw_rect(bx, by+5+(15*internal_id), win->width - 20, 15, colorRed, colorGreen, colorBlue, colorAlpha);
+        draw_window_rect(win, 0, 20+(15*internal_id), win->width - 20, 15, colorRed, colorGreen, colorBlue, colorAlpha);
 
-        kprintf(bx, by+5+(15*internal_id), colorAlpha, colorAlpha, colorAlpha, 0xFF, "[%d] ID: 0x%x | %dx%d %dbpp | LFB: 0x%x\n", 
+        win_printf(win, 0, 20+(15*internal_id), colorAlpha, colorAlpha, colorAlpha, 0xFF, "[%d] ID: 0x%x | %dx%d %dbpp | LFB: 0x%x\n", 
                 internal_id, 
                 mode_id, 
                 width, 
@@ -179,6 +179,8 @@ void draw_settings_content(const window_t* win, int bx, int by, int bw, int bh) 
         internal_id++;
         count_of_video++;
     }
+
+    draw_window_checkbox(win, 0, 0, &transparency_checkbox);
 
 }
 

@@ -10,6 +10,7 @@ public boot_info
 public lfb_mouse_addr
 public vbe_hor_size
 public vbe_ver_size
+public nxe_supported
 
 section '.text' writeable executable
 
@@ -41,14 +42,10 @@ include "drivers/lpt.asm"
 include "drivers/cmos.asm"
 include "drivers/acpi/acpi.asm"
 include "drivers/apic.asm"
-include "arch/x86-64/gui.asm"
-include "arch/x86-64/unicode.asm"
-include "arch/x86-64/unicode_font.asm"
 include "drivers/pci.asm"
 include "drivers/audio/hd_audio.asm"
 include "drivers/storage/atapi.asm"
 include "drivers/storage/cdfs.asm"
-include "setup/setup.asm"
 
 kernel_start:
 
@@ -82,11 +79,55 @@ mov [fb_front_buffer], rax
 mov dword [current_task_index], 1
 mov dword [total_processes], 2
 
+mov rax, cr0
+and ax, 0xFFFB
+or ax, 0x2
+mov cr0, rax
+
+mov rax, cr4
+or ax, 3 shl 9
+mov cr4, rax
+
+fninit
+
 mov rbx, [process_table_ptr]
+mov rax, idle_process_text
+mov [rbx], rax
+add rbx, 8
+
+push rbx
+call alloc_page
+pop rbx
+
+test rax, rax
+je KeBugMemoryManagement
+
+mov [rbx], rax
+fxsave [rax]
+
+sub rbx, 8
 mov rcx, [rbx + PCB_rsp]
 add rcx, 120
 mov rdx, kernel_idle_task
 mov [rcx], rdx ; Replace RIP of the bootmgr idle process
+
+mov rbx, [process_table_ptr]
+add rbx, 112
+mov rax, system_process_text
+mov [rbx], rax ; System Process
+add rbx, 8
+
+push rbx
+call alloc_page
+pop rbx
+
+test rax, rax
+je KeBugMemoryManagement
+
+mov [rbx], rax
+fxsave [rax]
+
+sub rbx, 8
 
 check_popcnt:
     mov eax, 1
@@ -104,12 +145,23 @@ check_popcnt:
 
 continue:
 
-call init_dynamic_idt
-call init_syscall_interface
+enable_nxe:
+    mov eax, 0x80000001
+    cpuid
+    test edx, 1 shl 20
+    jz .no_nx_support
 
-sti
+    mov ecx, 0xC0000080
+    rdmsr
 
-mov rdi, 512 ; Для 32 устройств шины PCI
+    or eax, 1 shl 11
+    wrmsr
+
+    mov [nxe_supported], byte 1
+
+.no_nx_support:
+
+mov rdi, 1024 ; Для 32 устройств шины PCI
 call kmalloc
 
 test rax, rax
@@ -119,8 +171,7 @@ mov [pci_devices], rax
 
 call pci_scan_bus_linear
 
-cmp [lfb_buffer_addr], 0
-je setup_kernel
+jmp .draw_interface
 
 mov rbx, [pci_devices]
 mov rcx, 0
@@ -160,6 +211,9 @@ jmp .search_audio_device
 call .draw_interface
 
 .audio_device_found:
+
+call .draw_interface
+
 
 mov rdi, r10
 mov rsi, r11
@@ -380,6 +434,9 @@ mov r14, 0
 call hda_setup_output_stream
 
 .draw_interface:
+
+call init_dynamic_idt
+call init_syscall_interface
 
 call KiInitializeKernel
 
@@ -623,8 +680,6 @@ vbe_final_destination:
     mov rax, ap_saved_idtr
     lidt [rax]
 
-    sti
-
 ret
 
 align 4
@@ -674,3 +729,6 @@ concord_file db 'CONCORD.PCM'
 music_buffer dq 0
 
 boot_info dq 0
+idle_process_text db 'System Idle Process',0
+system_process_text db 'System',0
+nxe_supported db 0

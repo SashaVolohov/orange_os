@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+#define NVME_MAX_CONTROLLERS 8
+
 typedef struct {
     uint64_t cap;
     uint32_t vs;
@@ -57,11 +59,34 @@ typedef struct {
     volatile uint32_t* cq_doorbell;
 } nvme_queue_t;
 
+typedef struct {
+    uintptr_t base_phys;
+    volatile nvme_regs_t* regs;
+
+    nvme_queue_t admin_queue;
+    nvme_queue_t io_queue;
+
+    uint16_t vendor_id;
+    uint16_t device_id;
+
+    uint32_t namespace_count;
+    int initialized;
+    uint64_t disk_size_mb;
+    uint64_t total_sectors;
+    char model[41];
+} nvme_controller_t;
+
+#define NVME_CC_EN (1U << 0)
+#define NVME_CSTS_RDY (1U << 0)
+#define NVME_CSTS_CFS (1U << 1)
+
+extern int nvme_controller_count;
+
 int init_nvme();
-int nvme_controller_reset();
-void nvme_identify_disk();
-void nvme_identify_namespace();
-int nvme_create_io_queues();
-int nvme_read_sectors(uint64_t lba, uint16_t count, void* buffer);
-int nvme_write_sectors(uint64_t lba, uint16_t count, const void* buffer);
-void nvme_dump_state();
+int nvme_controller_reset(int id);
+void nvme_identify_disk(int id);
+void nvme_identify_namespace(int id);
+int nvme_create_io_queues(int id);
+int nvme_read_sectors(uint64_t lba, uint16_t count, void* buffer, int id);
+int nvme_write_sectors(uint64_t lba, uint16_t count, const void* buffer, int id);
+int64_t nvme_get_sectors_count(int id);

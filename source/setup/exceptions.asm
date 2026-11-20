@@ -2150,6 +2150,13 @@ mov [page_rip_code], rax
 
 call clear_screen
 
+mov rax, cr2
+
+mov r15, cr2
+mov r14, bsod_text
+mov r13, 91
+call format_string_with_64_int
+
 mov r15, [page_error_code]
 mov r14, bsod_text
 mov r13, 71
@@ -2559,7 +2566,7 @@ bsod_0A_text db '*** STOP: 0x0000000A (IRQL_NOT_LESS_OR_EQUAL)',0
 bsod_0B_text db '*** STOP: 0x0000000B (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_0C_text db '*** STOP: 0x0000000C (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_0D_text db '*** STOP: 0x0000000D (KMODE_EXCEPTION_NOT_HANDLED)',0
-bsod_text db '*** STOP: 0x0000000E (PAGE_FAULT_IN_NONPAGED_AREA, 0x0000000000000000, 0x0000000000000000)',0
+bsod_text db '*** STOP: 0x0000000E (PAGE_FAULT_IN_NONPAGED_AREA, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000)',0
 bsod_0F_text db '*** STOP: 0x0000000F (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_10_text db '*** STOP: 0x00000010 (UNEXPECTED_KERNEL_MODE_TRAP)',0
 bsod_11_text db '*** STOP: 0x00000011 (UNEXPECTED_KERNEL_MODE_TRAP)',0

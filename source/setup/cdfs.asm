@@ -3,18 +3,33 @@ use64
 align 4096
 pvd_buffer rb 2048
 
+align 16
+bounce_buffer:  times 2048 db 0
+
 root_lba    dd 0
 root_size   dd 0
 
-iso9660_init: ; Output - RAX 0(success), -1(error)
+iso9660_init:
     push rdi
     push rsi
     push rdx
+    push rbx
 
-    mov rdi, pvd_buffer
-    mov rsi, 16
-    mov rdx, 1
-    call read_atapi_sector
+    mov [dap_structure.sectors_count], 1
+    mov rax, 16
+    mov [dap_structure.target_lba], rax
+
+    mov rax, pvd_buffer
+    and rax, 0x000F
+    mov [dap_structure.buffer_offset], ax
+    
+    mov rax, pvd_buffer
+    shr rax, 4
+    mov [dap_structure.buffer_segment], ax
+
+    movzx rdi, byte [loading_drive]
+    lea rsi, [dap_structure]
+    call call_bios_int13
 
     cmp byte [pvd_buffer], 1
     jne .error
@@ -24,7 +39,6 @@ iso9660_init: ; Output - RAX 0(success), -1(error)
     cmp byte [pvd_buffer + 5], '1'
     jne .error
 
-    
     mov eax, dword [pvd_buffer + 156 + 2]
     mov [root_lba], eax
     
@@ -38,10 +52,11 @@ iso9660_init: ; Output - RAX 0(success), -1(error)
     mov rax, -1
 
 .done:
+    pop rbx
     pop rdx
     pop rsi
     pop rdi
-ret
+    ret
 
 iso9660_find_entry: ; RDI - pvd_buffer, RSI - filename, RDX - length
     push rbx

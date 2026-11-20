@@ -6,13 +6,21 @@ public kfree
 public map_page
 public unmap_page
 
+public map_page_in_pml4
+
 public alloc_page
 public free_page
 
 public pt_begin
 
 public get_used_memory_mb_no_popcnt
+public get_used_memory_mb
 public mb_memory
+
+public free_user_pml4
+public create_user_pml4
+
+ADDR_MASK equ 0x000FFFFFFFFFF000
 
 public GDTR_64
 
@@ -24,8 +32,8 @@ dq 0;
 
 dw 0FFFFh, 0, 9A00h, 0AFh;
 dw 0FFFFh, 0, 9200h, 0AFh;
-dw 0FFFFh, 0, 0FA00h, 0AFh
 dw 0FFFFh, 0, 0F200h, 0AFh
+dw 0FFFFh, 0, 0FA00h, 0AFh
 
 public gdt_tss_slots
 gdt_tss_slots:
@@ -361,6 +369,8 @@ get_used_memory_mb_no_popcnt: ; rax - count of used memory in MB
     push rbx
     push rcx
     push rdx
+    push rsi
+    push rdi
     push r10
 
     mov rsi, [ptv_end]
@@ -375,12 +385,13 @@ get_used_memory_mb_no_popcnt: ; rax - count of used memory in MB
     xor rax, rax
 
 .loop_quadwords:
-    mov rdx, [rsi]
-    popcnt rdx, rdx
+    mov rdi, [rsi]
 
     push rax
+    push rcx
         call popcnt_64_loop
         mov rdx, rax
+    pop rcx
     pop rax
 
     add rax, rdx
@@ -391,18 +402,20 @@ get_used_memory_mb_no_popcnt: ; rax - count of used memory in MB
 
 .exit:
     pop r10
+    pop rdi
+    pop rsi
     pop rdx
     pop rcx
     pop rbx
-ret
+    ret
 
 .empty_bitmap:
     xor rax, rax
     jmp .exit
 
-popcnt_64_loop: ; Input - 64-bit int
-                ; Output - RAX - count of bits
-push rdi
+popcnt_64_loop:
+    push rdi
+    push rcx 
 
     xor eax, eax
     test rdi, rdi
@@ -416,8 +429,9 @@ push rdi
     jnz .loop
 
 .done:
+    pop rcx
     pop rdi
-ret
+    ret
 
 free_page:
     push rbx
@@ -504,26 +518,20 @@ extract_paging_indices: ; Input: RDI - virtual addr
     mov r12, rax
     ret
 
-map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
-          ; rax - 1(success), 0(error)
-    
+map_page_in_pml4:
     push rbx
-    push r12
-    push r13
-    push r14
-    push r15
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push r8
     push r9
     push r10
     push r11
-    push rdi
-    push rcx
-    push rdx
-    push r8
     push r12
     push r13
     push r14
     push r15
-    push rsi
 
     mov r13, rdi
     mov r14, rsi
@@ -549,7 +557,7 @@ map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
     and rax, 0x1FF
     mov r12, rax
 
-    mov rax, [pt_begin]
+    mov rax, rcx
     shl r9, 3
     add rax, r9
     
@@ -592,29 +600,34 @@ map_page: ; Input: rdi - virtual addr, rsi - physical addr, rdx - access flags
     xor rax, rax
 
 .done:
-
-    pop rsi
     pop r15
     pop r14
     pop r13
     pop r12
-    pop r8
-
-    pop rdx
-    pop rcx
-    pop rdi
     pop r11
     pop r10
     pop r9
-    pop r15
-    pop r14
-    pop r13
-    pop r12
+    pop r8
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
     pop rbx
 ret
 
+map_page:
+    push rcx
+    mov rcx, [pt_begin]
+    call map_page_in_pml4
+    pop rcx
+ret
+
+map_user_page:
+    jmp map_page_in_pml4
+
 get_or_create_table:
     push rbx
+    push rcx
     push rdi
 
     mov rax, [rdi]
@@ -643,18 +656,20 @@ get_or_create_table:
     jmp .done
 
 .table_exists:
-    and rax, not 0xFFF
 
 .done:
-    and rax, not 0xFFF 
+    mov rbx, 0x000FFFFFFFFFF000
+    and rax, rbx
     
     pop rdi
+    pop rcx
     pop rbx
     ret
 
 .out_of_mem:
     xor rax, rax
     pop rdi
+    pop rcx
     pop rbx
     ret
 
@@ -1105,6 +1120,174 @@ kfree:
         call spin_unlock
     pop rdi
 
+    ret
+
+create_user_pml4:
+    push rbx
+    push rcx
+    push rsi
+    push rdi
+
+    call alloc_page
+    test rax, rax
+    jz .out_of_mem
+
+    mov rbx, rax
+
+    mov rdi, rbx
+    mov rcx, 256
+    xor rax, rax
+    rep stosq
+
+    mov rsi, [pt_begin]
+    add rsi, 256 * 8
+    mov rcx, 256
+    rep movsq
+
+    mov rax, rbx
+    jmp .done
+
+.out_of_mem:
+    xor rax, rax
+
+.done:
+    pop rdi
+    pop rsi
+    pop rcx
+    pop rbx
+    ret
+
+free_user_pml4:
+    test rdi, rdi
+    jz .exit
+
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov r12, rdi
+    xor r13, r13
+
+.loop_pml4:
+    cmp r13, 256
+    jge .free_root
+
+    mov rax, [r12 + r13*8]
+    test rax, 1
+    jz .next_pml4
+
+    mov rbx, ADDR_MASK
+    and rax, rbx
+    mov r14, rax
+    xor r15, r15
+
+.loop_pdpt:
+    cmp r15, 512
+    jge .free_pdpt
+
+    mov rax, [r14 + r15*8]
+    test rax, 1
+    jz .next_pdpt
+
+    test rax, (1 shl 7)
+    jnz .next_pdpt
+
+    mov rbx, ADDR_MASK
+    and rax, rbx
+
+    push rdi
+    mov rdi, rax
+    call free_pd_table
+    pop rdi
+
+.next_pdpt:
+    inc r15
+    jmp .loop_pdpt
+
+.free_pdpt:
+    mov rdi, r14
+    call free_page
+
+.next_pml4:
+    inc r13
+    jmp .loop_pml4
+
+.free_root:
+    mov rdi, r12
+    call free_page
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+.exit:
+    ret
+
+free_pd_table:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov r12, rdi
+    xor r13, r13
+
+.loop_pd:
+    cmp r13, 512
+    jge .free_pd
+
+    mov rax, [r12 + r13*8]
+    test rax, 1
+    jz .next_pd
+
+    test rax, (1 shl 7)
+    jnz .next_pd
+
+    mov rbx, ADDR_MASK
+    and rax, rbx
+    mov r14, rax
+    xor r15, r15
+
+.loop_pt:
+    cmp r15, 512
+    jge .free_pt
+
+    mov rax, [r14 + r15*8]
+    test rax, 1
+    jz .next_pt
+
+    mov rbx, ADDR_MASK
+    and rax, rbx
+
+    mov rdi, rax
+    call free_page
+
+.next_pt:
+    inc r15
+    jmp .loop_pt
+
+.free_pt:
+    mov rdi, r14
+    call free_page
+
+.next_pd:
+    inc r13
+    jmp .loop_pd
+
+.free_pd:
+    mov rdi, r12
+    call free_page
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 mb_memory dq 0

@@ -36,8 +36,6 @@ call memory_init
 call videomem_init
 call allocator_init
 
-call init_pic
-
 LIDT [IDTR]
 
 call com1_init
@@ -64,6 +62,15 @@ jne gui_screen
 je continue
 
 continue:
+
+mov r13, orange_os_start
+mov r15d, 320
+mov r14d, 550
+mov cl, 0FFh
+mov bh, 0FFh
+mov bl, 0FFh
+mov ch, 0FFh
+call draw_text
 
 ; 1A00h - начало
 ; [1900h] - конец
@@ -182,32 +189,9 @@ lgdt [GDTR_64]
 mov ax, 0x28
 ltr ax
 
-call init_acpi
-call init_apic
-
-call calibrate_lapic_timer
-call init_lapic_timer
-
-call init_io_apic_keyboard
-call init_io_apic_irq2
-call init_io_apic_irq3
-call init_io_apic_irq4
-call init_io_apic_irq5
-call init_io_apic_irq6
-call init_io_apic_irq7
-call init_io_apic_irq8
-call init_io_apic_irq9
-call init_io_apic_irq10
-call init_io_apic_irq11
-call init_io_apic_irq12
-call init_io_apic_irq13
-call init_io_apic_irq14
-call init_io_apic_irq15
-
 call iso9660_init
 cmp rax, -1
 je kernel_not_found
-
 
 call alloc_page
 test rax, rax
@@ -216,10 +200,9 @@ jz memory_management
 mov [root_cd_buffer], rax
 
 mov rdi, rax
-mov rsi, 0
 mov esi, [root_lba]
-mov rdx, 1
-call read_atapi_sector
+mov rcx, 1
+call read_sectors_to_high_memory
 
 mov rdi, [root_cd_buffer]
 mov rsi, kernel_file
@@ -271,11 +254,6 @@ div rbx
 
 mov [needed_progress], rax
 
-
-
-
-
-
 .check_sectors:
 
 mov rdx, 0
@@ -294,16 +272,36 @@ add rax, 1
 
 .load_file:
 
-mov r13, orange_os_start
-mov r15d, 300
+push rax
+
+mov rsi, 0
+mov esi, [lfb_buffer_addr]
+
+mov eax, 480000
+
+.load_file_gui_screen:
+
+mov [rsi], byte 0
+mov [rsi+1], byte 0
+mov [rsi+2], byte 0
+mov [rsi+3], byte 0
+
+dec eax
+add rsi, 4
+cmp eax, 00h
+jne .load_file_gui_screen
+je .file_continue
+
+.file_continue:
+
+mov r13, kernel_start
+mov r15d, 330
 mov r14d, 550
 mov cl, 0FFh
 mov bh, 0FFh
 mov bl, 0FFh
 mov ch, 0FFh
 call draw_text
-
-push rax
 
 mov rdi, show_loading_progress
 call create_task
@@ -312,17 +310,37 @@ pop rax
 
 mov rdi, [2000h]
 mov rsi, [setup_lba]
-mov rdx, rax
-
-call read_atapi_sector
+mov rcx, rax
+call read_sectors_to_high_memory
 
 mov rbx, [process_table_ptr]
 add rbx, struct_pcb_size
 add rbx, struct_pcb_size
 mov dword [rbx + PCB_state], TASK_STATE_ZOMBIE
 
+call init_pic
+
+call init_acpi
+call init_apic
+
+call init_io_apic_keyboard
+call init_io_apic_irq2
+call init_io_apic_irq3
+call init_io_apic_irq4
+call init_io_apic_irq5
+call init_io_apic_irq6
+call init_io_apic_irq7
+call init_io_apic_irq8
+call init_io_apic_irq9
+call init_io_apic_irq10
+call init_io_apic_irq11
+call init_io_apic_irq12
+call init_io_apic_irq13
+call init_io_apic_irq14
+call init_io_apic_irq15
 
 mov r12, [2000h]
+
 
 prepare_and_load_kernel:
     cmp dword [r12], 0x464C457F
@@ -435,6 +453,63 @@ prepare_and_load_kernel:
     
 .error_paging_fail:
     jmp kernel_not_found
+
+read_sectors_to_high_memory:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+    push r14
+
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rcx
+
+.loop_sectors:
+    cmp r14, 0
+    je .success
+
+    mov [dap_structure.sectors_count], 1
+    mov [dap_structure.target_lba], r13
+
+    mov rax, bounce_buffer
+    and rax, 0x000F
+    mov [dap_structure.buffer_offset], ax
+    
+    mov rax, bounce_buffer
+    shr rax, 4
+    mov [dap_structure.buffer_segment], ax
+
+    movzx rdi, byte [loading_drive]
+    lea rsi, [dap_structure]
+    call call_bios_int13
+
+    mov rsi, bounce_buffer
+    mov rdi, r12
+    mov rcx, 256
+    cld
+    rep movsq
+
+    mov r12, rdi
+    inc r13
+    dec r14
+    jmp .loop_sectors
+
+.success:
+    mov rax, 0
+    jmp .done
+
+.error:
+    mov rax, -1
+
+.done:
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
 
 kernel_not_found:
 cli
@@ -556,7 +631,8 @@ fat_main_files dq 0
 fat_filename db '00000000000',0
 file_addr dq 0
 kernel_file db 'OROSKRNL.ELF',0
-orange_os_start db 'OrangeOS is loading files...',0
+orange_os_start db 'Loading OrangeOS Setup...',0
+kernel_start db 'Loading OROSKRNL.ELF...',0
 current_progress dq 0
 needed_progress dq 0
 kernel_list dq 0

@@ -1,28 +1,29 @@
 use64
 
+public cmos_ticks
+
 vector_handler_40:
+    push rax
+    push rsi
 
-push rax
-push rsi
-
-    mov al, 0x0C
+    mov al, 0x8C
     out 0x70, al
-
     in al, 0x71
 
     test al, 0x40
-    jnz .exit
+    jz .clear_nmi
 
-    add [cmos_ticks], 1
+    lock add qword [cmos_ticks], 1
 
-.exit:
+.clear_nmi:
+    mov al, 0x0D
+    out 0x70, al
 
     mov rsi, [lapic_base_addr]
     mov dword [rsi + 0xB0], 0
 
-pop rsi
-pop rax
-
+    pop rsi
+    pop rax
 iretq
 
 init_rtc:

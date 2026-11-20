@@ -3,6 +3,8 @@ use64
 extrn handle_mouse_click
 
 public mouse_init
+public global_mouse_x
+public global_mouse_y
 
 mouse_logo:
 db 2,2,0,0,0,0,0,0,0,0,0,0
@@ -135,7 +137,18 @@ vector_handler_44:
     push rax
     push rbx
     push rcx
-    push rdx 
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
 
     in al, 0x64
     test al, 0x20
@@ -175,70 +188,14 @@ vector_handler_44:
     movsx ebx, byte [mouse_packet+2] 
     neg ebx                          
 
-    cmp dword [old_mouse_x], 1000
-    je .skip_restore
-
-.render_screen:
-    push r15
-    push r14
-    push r12
-    push r13
-    push rdx
-    push rcx
-    push rbx
-
-    mov r12d, [old_mouse_x]
-    mov r13d, [old_mouse_y]
-    mov rdx, mouse_background
-    
-    xor r9, r9
-.restore_paint_y:
-    xor r8, r8
-.restore_paint_x:
-    lea r15, [r12 + r8] 
-    lea r14, [r13 + r9] 
-
-    mov ecx, dword [rdx]
-    mov bl, cl
-    mov bh, ch
-    shr ecx, 16
-    
-    push r8
-    push r9
-    push rdx
-    call draw_mouse_pixel
-    pop rdx
-    pop r9
-    pop r8
-
-    add rdx, 4          
-    inc r8              
-    cmp r8, 12          
-    jne .restore_paint_x
-
-    xor r8, r8          
-    inc r9              
-    cmp r9, 18          
-    jne .restore_paint_y
-
-    pop rbx
-    pop rcx
-    pop rdx
-    pop r13
-    pop r12
-    pop r14
-    pop r15
-
-.skip_restore:
-
     add [global_mouse_x], eax
     add [global_mouse_y], ebx
 
-mov edi, [global_mouse_x]
-mov esi, [global_mouse_y]
-mov rdx, 0
-mov dl, [mouse_buttons] 
-call handle_mouse_click
+    mov edi, [global_mouse_x]
+    mov esi, [global_mouse_y]
+    mov rdx, 0
+    mov dl, [mouse_buttons] 
+    call handle_mouse_click
 
     cmp dword [global_mouse_x], 0
     jge .check_max_x
@@ -256,63 +213,16 @@ call handle_mouse_click
     cmp dword [global_mouse_y], 0
     jge .check_max_y
     mov dword [global_mouse_y], 0
-    jmp .save_new_background
+    jmp .save_new_values
 .check_max_y:
     mov r12d, 0
     mov r12w, [vbe_ver_size]
     sub r12w, 1
     cmp dword [global_mouse_y], r12d
-    jle .save_new_background
+    jle .save_new_values
     mov dword [global_mouse_y], r12d
 
-.save_new_background:
-    push r15
-    push r14
-    push r12
-    push r13
-    push rdx
-    push rcx
-    push rbx
-    mov r12d, [global_mouse_x]
-    mov r13d, [global_mouse_y]
-    mov rsi, mouse_background
-    xor r9, r9
-.save_paint_y:
-    xor r8, r8
-.save_paint_x:
-    lea r15, [r12 + r8]
-    lea r14, [r13 + r9]
-
-    push r8
-    push r9
-    push rsi
-    call read_pixel     
-    pop rsi
-    pop r9
-    pop r8
-    
-    mov [rsi], bl
-    mov [rsi+1], bh
-    mov [rsi+2], cl
-    mov [rsi+3], ch
-    add rsi, 4
-
-    inc r8
-    cmp r8, 12
-    jne .save_paint_x
-    inc r9
-    cmp r9, 18
-    jne .save_paint_y
-    pop rbx
-    pop rcx
-    pop rdx
-    pop r13
-    pop r12
-    pop r14
-    pop r15
-.begin_draw:
-
-    call draw_mouse
+.save_new_values:
 
     mov eax, [global_mouse_x]
     mov [old_mouse_x], eax
@@ -324,6 +234,17 @@ call handle_mouse_click
     mov rsi, [lapic_base_addr]
     mov dword [rsi + 0xB0], 0
 
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
     pop rdx
     pop rcx
     pop rbx

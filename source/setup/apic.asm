@@ -16,69 +16,6 @@ init_apic:
 
 ret
 
-calibrate_lapic_timer:
-    mov rsi, [lapic_base_addr]
-    test rsi, rsi
-    jz .done
-
-    mov dword [rsi + 0x3E0], 0x03
-
-    mov al, 00110000b            ; Канал 0, LSB/MSB, Mode 0
-    out 0x43, al
-
-    mov al, 0xFF
-    out 0x40, al
-    out 0x40, al
-
-    mov dword [rsi + 0x320], 0x00010000
-    mov dword [rsi + 0x380], 0xFFFFFFFF
-    mov dword [rsi + 0x320], 0x00000000
-    
-.wait_pit_loop:
-    mov al, 0
-    out 0x43, al
-    in al, 0x40
-    movzx ecx, al
-    in al, 0x40
-    shl eax, 8
-    or ecx, eax
-
-    cmp ecx, 0xD164
-    ja .wait_pit_loop
-
-    mov dword [rsi + 0x320], 0x00010000
-
-    mov eax, dword [rsi + 0x390]
-    mov ecx, 0xFFFFFFFF
-    sub ecx, eax
-
-    mov eax, ecx
-    xor edx, edx
-    mov ecx, 10
-    div ecx
-
-    mov [lapic_ticks_per_ms], eax
-
-.done:
-    ret
-
-init_lapic_timer:
-
-    mov al, 0x20
-    out 0x20, al
-    out 0xA0, al
-
-    mov al, 0xFF
-    out 0xA1, al
-    out 0x21, al
-
-
-    mov rsi, [lapic_base_addr]
-    mov eax, [lapic_ticks_per_ms] 
-    mov dword [rsi + 0x380], eax 
-    mov dword [rsi + 0x320], 0x00020020 
-ret
-
 io_apic_write: ; Input - CL(number of inner register), EAX - data for write
     mov rsi, [io_apic_base_addr]
     test rsi, rsi

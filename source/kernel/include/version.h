@@ -1,0 +1,7 @@
+#ifndef VERSION_H
+#define VERSION_H
+
+#define ORANGEOS_BUILD 3
+#define ORANGEOS_BUILD_DATE "2026-11-20 20:46"
+
+#endif

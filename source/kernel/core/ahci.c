@@ -5,15 +5,19 @@
 
 uintptr_t ahci_base_phys = 0;
 uint8_t sata_ports[32];
+uint64_t sata_ports_sectors[32];
 uint8_t sata_devices_count = 0;
 
-__attribute__((aligned(1024))) uint8_t ahci_static_clb[1024];
-__attribute__((aligned(256)))  uint8_t ahci_static_fb[256];
-__attribute__((aligned(128)))  uint8_t ahci_static_ctba[512];
+extern uint32_t* fb_back_buffer;
 
 int get_ahch_port(int port) {
     if(port >= 32) return 0;
     return sata_ports[port];
+}
+
+uint64_t get_satapi_sectors(int port) {
+    if(port >= 32) return 0;
+    return sata_ports_sectors[port];
 }
 
 void ahci_init_port(ahci_port_t* port) {
@@ -58,63 +62,6 @@ void ahci_init_port(ahci_port_t* port) {
     port->cmd |= 0x0001;
 }
 
-void ahci_init_port_atapi(ahci_port_t* port) {
-    port->cmd &= ~0x0001;
-    port->cmd &= ~0x0010;
-    
-    while(port->cmd & 0x4000);
-    while(port->cmd & 0x0020);
-
-    port->is = 0xFFFF;
-    port->serr = 0xFFFFFFFF;
-
-    uint64_t phys_page = alloc_page();
-
-    port->clb = (uintptr_t)ahci_static_clb;
-    port->fb  = (uintptr_t)ahci_static_fb;
-    
-    port->clb = phys_page; 
-    port->clbu = 0;
-    
-    port->fb = phys_page + 1024;
-    port->fbu = 0;
-
-    ahci_cmd_header_t* cmd_list = (ahci_cmd_header_t*)phys_page;
-    memset(cmd_list, 0, 1024);
-
-    uint64_t tables_phys_page1 = alloc_page();
-    uint64_t tables_phys_page2 = alloc_page();
-
-    for (int i = 0; i < 32; i++) {
-        uint32_t current_table_phys = 0;
-        if (i < 16) {
-            current_table_phys = tables_phys_page1 + (i * 256);
-        } else {
-            current_table_phys = tables_phys_page2 + ((i - 16) * 256);
-        }
-
-        cmd_list[i].ctba = current_table_phys;
-        cmd_list[i].ctbau = 0;
-
-        ahci_cmd_table_t* cmd_table = (ahci_cmd_table_t*)(uintptr_t)current_table_phys;
-        memset(cmd_table, 0, sizeof(ahci_cmd_table_t));
-    }
-
-    port->clb = (uintptr_t)ahci_static_clb;
-    port->fb  = (uintptr_t)ahci_static_fb;
-
-    cmd_list[0].ctba = (uintptr_t)ahci_static_ctba;
-
-    port->cmd |= 0x0010;
-    sleep_ms(10);
-
-    port->is = port->is;
-    port->serr = port->serr;
-
-    port->cmd |= 0x0001;
-
-}
-
 void enable_ahci(uint64_t abar_phys_addr) {
     ahci_abar_t* abar = (ahci_abar_t*)abar_phys_addr;
 
@@ -139,50 +86,31 @@ void enable_ahci(uint64_t abar_phys_addr) {
 
                     sata_ports[i] = 1;
                     sata_devices_count++;
-                } else if(abar->ports[i].sig == 0xEB140101) {
-                    ahci_init_port_atapi(&abar->ports[i]);
-
+                } else if (abar->ports[i].sig == 0xEB140101) {
+                    ahci_init_port(&abar->ports[i]);
                     satapi_inquiry_data_t* satapi_info = ahch_atapi_get_info(i);
 
-                    if(satapi_info->device_type == 0x05) { // CD-ROM/DVD-ROM
+                    if (satapi_info != NULL && satapi_info->device_type == 0x05) { // CD-ROM/DVD-ROM
                         sata_ports[i] = 2;
                         sata_devices_count++;
 
-                        abar->ports[i].sctl = (abar->ports[i].sctl & ~0xF) | 1;
-                        sleep_ms(20);
-
-                        abar->ports[i].sctl = (abar->ports[i].sctl & ~0xF);
-                        sleep_ms(50);
-
-                        uint32_t timeout = 1000;
-                        while (((abar->ports[i].ssts & 0xF) != 3) && --timeout) {
-                            sleep_ms(1);
+                        int ready = 0;
+                        for (int retry = 0; retry < 10; retry++) {
+                            if (ahci_atapi_test_ready(i) != 0) {
+                                ready = 1;
+                                break;
+                            }
+                            sleep_ms(50);
                         }
 
-                        volatile uint32_t dummy = abar->ports[i].is;
-                        abar->ports[i].is = dummy;
-
-                        volatile uint32_t dummy_serr = abar->ports[i].serr; 
-                        abar->ports[i].serr = dummy_serr;
-
-                        int status = ahci_wait_port(i);
-                        if(status == 0) {
+                        if (!ready) {
                             continue;
                         }
 
-                        /*status = ahci_atapi_test_ready(i);
-                        if(status == 0) {
-                            tprintf(0, 24, 0x70, "Port not ready.");
-                            while(1) {
-
-                            }
-                        }*/
-
-                        /*int count_of_sectors = ahci_atapi_get_sectors(i);
-
-                        int drive_size_in_mb = (count_of_sectors * 2048) / 1024 / 1024;*/
+                        int count_of_sectors = ahci_atapi_get_sectors(i);
+                        sata_ports_sectors[i] = count_of_sectors;
+                        
                     }
-
                 }
             }
         }
@@ -283,11 +211,13 @@ int ahci_read_lba48(ahci_port_t* port, uint64_t lba, uint16_t count, uint64_t ta
         }
         
         if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
             return -2;
         }
     }
 
     if (port->tfd & 0x01) {
+        ahci_port_recover_error(port);
         return -2;
     }
 
@@ -349,11 +279,13 @@ int ahci_write_lba48(ahci_port_t* port, uint64_t lba, uint16_t count, uint64_t s
             break;
         }
         if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
             return -2;
         }
     }
 
     if (port->tfd & 0x01) {
+        ahci_port_recover_error(port);
         return -2;
     }
 
@@ -402,6 +334,7 @@ uint64_t ahci_get_sector_count(ahci_port_t* port) {
 
         if ((port->ci & (1 << slot)) == 0) break;
         if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
             return 0; 
         }
     }
@@ -484,6 +417,7 @@ satapi_inquiry_data_t* ahch_atapi_get_info_port(ahci_port_t* port) {
 
         if ((port->ci & (1 << slot)) == 0) break;
         if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
             return 0; 
         }
     }
@@ -579,6 +513,7 @@ int ahci_atapi_clear_unit_attention_dma(ahci_port_t* port) {
         if ((port->ci & (1 << slot)) == 0) break;
         
         if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
             while (port->ci & (1 << slot));
             break; 
         }
@@ -661,6 +596,7 @@ int ahci_atapi_get_sectors_port(ahci_port_t* port) {
 
         if ((port->ci & (1 << slot)) == 0) break;
         if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
             return 0; 
         }
     }
@@ -693,80 +629,55 @@ int ahci_wait_port(int port) {
 }
 
 int ahci_atapi_test_unit_ready_dma(ahci_port_t* port) {
-    uint64_t phys_buffer = alloc_page();
-    if (!phys_buffer) return 0;
-
-    port->is = 0xFFFF;
+    port->is = 0xFFFFFFFF;
+    port->serr = 0xFFFFFFFF;
     int slot = 0;
 
     ahci_cmd_header_t* cmd_list = (ahci_cmd_header_t*)(uintptr_t)port->clb;
     ahci_cmd_header_t* cmd_header = &cmd_list[slot];
+    
+    uint32_t ctba = cmd_header->ctba;
+    uint32_t ctbau = cmd_header->ctbau;
+    memset(cmd_header, 0, sizeof(ahci_cmd_header_t));
+    cmd_header->ctba = ctba;
+    cmd_header->ctbau = ctbau;
 
     cmd_header->cfl = 5;
     cmd_header->w = 0;
-    cmd_header->prdtl = 1;
-    cmd_header->a = 1;
+    cmd_header->prdtl = 0;
+    cmd_header->a = 1; // ATAPI
 
     ahci_cmd_table_t* cmd_table = (ahci_cmd_table_t*)(uintptr_t)cmd_header->ctba;
     memset(cmd_table, 0, sizeof(ahci_cmd_table_t));
-
-    cmd_table->prdt[0].dba = phys_buffer;
-    cmd_table->prdt[0].dbau = 0;
-    cmd_table->prdt[0].dbc = 512 - 1;
-    cmd_table->prdt[0].i = 1;
-
-    cmd_table->acmd[0] = 0x00;
+    memset(cmd_table->acmd, 0, 16); // TEST UNIT READY (0x00)
 
     fis_reg_h2d_t* fis = (fis_reg_h2d_t*)(&cmd_table->cfis);
     fis->fis_type = 0x27;
     fis->c = 1;
     fis->command = ATA_PACKET;
-    fis->featurel = 0x01;
-    fis->featureh = 0;
-    fis->lba0 = 0;
-    fis->lba1 = 0;
-    fis->lba2 = 0;
+    fis->featurel = 0x00;
+    fis->lba1 = 0x00;
+    fis->lba2 = 0x00;
 
     uint32_t timeout = 1000000;
     while ((port->tfd & (0x80 | 0x08)) && --timeout);
-    if (timeout == 0) { free_page(phys_buffer); return 0; }
+    if (timeout == 0) return 0;
 
     port->ci = (1 << slot);
 
     while (1) {
-        if (port->is) {
-            port->is = port->is;
-        }
-        
-        if (port->serr) {
-            port->serr = port->serr;
-        }
+        if (port->is) port->is = port->is;
+        if (port->serr) port->serr = port->serr;
 
-        volatile uint32_t* hba_is = (volatile uint32_t*)((uintptr_t)ahci_base_phys + 0x08);
-        if (*hba_is) {
-            *hba_is = *hba_is;
+        if ((port->ci & (1 << slot)) == 0) {
+            return 1;
         }
 
-        if ((port->ci & (1 << slot)) == 0) break;
-
-        if ((port->tfd & 0x01) && ((port->tfd >> 8) & 0xFF) != 0x60) {
-            free_page(phys_buffer);
-            return 0; 
-        }
-    }
-
-    int success = 1;
-    while (1) {
-        if (port->is) { port->is = port->is; }
-        if ((port->ci & (1 << slot)) == 0) break;
         if (port->tfd & 0x01) {
-            success = 0;
-            break;
+            ahci_port_recover_error(port);
+            return 0;
         }
     }
-
-    free_page(phys_buffer);
-    return success; 
 }
 
 int ahci_atapi_test_ready(int port) {
@@ -781,10 +692,6 @@ int ahci_atapi_test_ready(int port) {
             ready = 1;
             break;
         }
-        
-        int err_code = -status;
-        
-        tprintf(20, 22, 0x1F, "TUR Err: %x, Retry: %d", err_code, retry);
 
         sleep_ms(100); 
 
@@ -796,6 +703,16 @@ int ahci_atapi_test_ready(int port) {
     } else {
         return 1;
     }
+}
+
+void ahci_port_recover_error(ahci_port_t* port) {
+    port->cmd &= ~0x0001;
+    while (port->cmd & 0x8000);
+
+    port->is = 0xFFFFFFFF;
+    port->serr = 0xFFFFFFFF;
+
+    port->cmd |= 0x0001;
 }
 
 int ahci_atapi_request_sense_dma(ahci_port_t* port) {
@@ -845,7 +762,7 @@ int ahci_atapi_request_sense_dma(ahci_port_t* port) {
         if (port->is) { port->is = port->is; }
         if ((port->ci & (1 << slot)) == 0) break;
         if (port->tfd & 0x01) {
-            tprintf(15, 11, 0x1F, "RS Hard Err! TFD: %x", port->tfd);
+            ahci_port_recover_error(port);
             free_page(phys_buffer);
             return 0; 
         }
@@ -858,4 +775,115 @@ int ahci_atapi_request_sense_dma(ahci_port_t* port) {
 int ahci_atapi_request_sense(int port) {
     ahci_abar_t* abar = (ahci_abar_t*)ahci_base_phys;
     return ahci_atapi_request_sense_dma(&abar->ports[port]);
+}
+
+static int ahci_atapi_read_chunk_dma(ahci_port_t* port, uint32_t lba, uint16_t count, void* out_buffer) {
+    if (count == 0 || count > 2) return 0;
+
+    uint64_t phys_buffer = alloc_page();
+    if (!phys_buffer) return 0;
+
+    port->is = 0xFFFFFFFF;
+    port->serr = 0xFFFFFFFF;
+    int slot = 0;
+
+    ahci_cmd_header_t* cmd_list = (ahci_cmd_header_t*)(uintptr_t)port->clb;
+    ahci_cmd_header_t* cmd_header = &cmd_list[slot];
+
+    uint32_t ctba = cmd_header->ctba;
+    uint32_t ctbau = cmd_header->ctbau;
+    memset(cmd_header, 0, sizeof(ahci_cmd_header_t));
+    cmd_header->ctba = ctba;
+    cmd_header->ctbau = ctbau;
+
+    cmd_header->cfl = 5;
+    cmd_header->w = 0;
+    cmd_header->prdtl = 1;
+    cmd_header->a = 1;
+
+    ahci_cmd_table_t* cmd_table = (ahci_cmd_table_t*)(uintptr_t)cmd_header->ctba;
+    memset(cmd_table, 0, sizeof(ahci_cmd_table_t));
+
+    uint32_t byte_count = count * 2048;
+
+    cmd_table->prdt[0].dba = (uint32_t)(phys_buffer & 0xFFFFFFFF);
+    cmd_table->prdt[0].dbau = (uint32_t)(phys_buffer >> 32);
+    cmd_table->prdt[0].dbc = byte_count - 1;
+    cmd_table->prdt[0].i = 1;
+
+    memset(cmd_table->acmd, 0, 16);
+    cmd_table->acmd[0] = 0x28; // READ (10)
+    cmd_table->acmd[2] = (lba >> 24) & 0xFF;
+    cmd_table->acmd[3] = (lba >> 16) & 0xFF;
+    cmd_table->acmd[4] = (lba >> 8) & 0xFF;
+    cmd_table->acmd[5] = lba & 0xFF;
+    cmd_table->acmd[7] = (count >> 8) & 0xFF;
+    cmd_table->acmd[8] = count & 0xFF;
+
+    fis_reg_h2d_t* fis = (fis_reg_h2d_t*)(&cmd_table->cfis);
+    fis->fis_type = 0x27;
+    fis->c = 1;
+    fis->command = ATA_PACKET;
+    fis->featurel = 0x01;
+    fis->lba1 = byte_count & 0xFF;
+    fis->lba2 = (byte_count >> 8) & 0xFF;
+
+    uint32_t timeout = 1000000;
+    while ((port->tfd & (0x80 | 0x08)) && --timeout);
+    if (timeout == 0) {
+        free_page(phys_buffer);
+        return 0;
+    }
+
+    port->ci = (1 << slot);
+
+    while (1) {
+        if (port->is) port->is = port->is;
+        if (port->serr) port->serr = port->serr;
+
+        if ((port->ci & (1 << slot)) == 0) {
+            break;
+        }
+
+        if (port->tfd & 0x01) {
+            ahci_port_recover_error(port);
+            free_page(phys_buffer);
+            return 0;
+        }
+    }
+
+    memcpy(out_buffer, (void*)(uintptr_t)phys_buffer, byte_count);
+    free_page(phys_buffer);
+    return 1;
+}
+
+int ahci_atapi_read(int port_num, uint32_t lba, uint32_t count, void* buffer) {
+    ahci_abar_t* abar = (ahci_abar_t*)ahci_base_phys;
+    ahci_port_t* port = &abar->ports[port_num];
+
+    uint8_t* dst = (uint8_t*)buffer;
+    uint32_t current_lba = lba;
+    uint32_t remaining = count;
+
+    while (remaining > 0) {
+        uint16_t chunk = (remaining >= 2) ? 2 : 1;
+        
+        int success = 0;
+        for (int retry = 0; retry < 3; retry++) {
+            if (ahci_atapi_read_chunk_dma(port, current_lba, chunk, dst)) {
+                success = 1;
+                break;
+            }
+            ahci_atapi_request_sense(port_num);
+            sleep_ms(10);
+        }
+
+        if (!success) return 0;
+
+        dst += chunk * 2048;
+        current_lba += chunk;
+        remaining -= chunk;
+    }
+
+    return 1;
 }

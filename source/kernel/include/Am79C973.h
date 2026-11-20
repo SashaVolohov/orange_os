@@ -1,5 +1,21 @@
 #include <stdint.h>
 
+#include "lwip/opt.h"
+#include "lwip/init.h"
+#include "lwip/netif.h"
+#include "lwip/dhcp.h"
+#include "lwip/timeouts.h"
+#include "netif/ethernet.h"
+#include "lwip/etharp.h"
+#include "lwip/dns.h"
+#include "lwip/raw.h"
+#include "lwip/icmp.h"
+#include "lwip/inet_chksum.h"
+#include "lwip/ip.h"
+#include "lwip/sys.h"
+#include "lwip/tcp.h"
+#include "lwip/ip_addr.h"
+
 typedef struct {
     uint32_t io_base;
     uint8_t mac[6];
@@ -64,10 +80,47 @@ struct FullArpPacket {
     struct ArpPacket      arp;
 } __attribute__((packed));
 
+struct IpHeader {
+    uint8_t  version_ihl;
+    uint8_t  tos;
+    uint16_t total_length;
+    uint16_t id;
+    uint16_t flags_fragment;
+    uint8_t  ttl;
+    uint8_t  protocol;
+    uint16_t checksum;
+    uint8_t  src_ip[4];
+    uint8_t  dst_ip[4];
+} __attribute__((packed));
+
+struct IcmpHeader {
+    uint8_t  type;
+    uint8_t  code;
+    uint16_t checksum;
+    uint16_t id;
+    uint16_t sequence;
+} __attribute__((packed));
+
+struct UdpHeader {
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint16_t length;
+    uint16_t checksum;
+} __attribute__((packed));
+
 int init_am79c973(am79c973_device_t *dev);
 void send_test_arp_packet(uint8_t* my_mac);
 void check_incoming_packets();
 
-#define htons(val) ((((val) & 0xFF00) >> 8) | (((val) & 0x00FF) << 8))
-#define htonl(val) ((((val) & 0xFF000000) >> 24) | (((val) & 0x00FF0000) >> 8) | \
-                    (((val) & 0x0000FF00) << 8)  | (((val) & 0x000000FF) << 24))
+void am79c973_send_packet(const uint8_t* packet_data, uint32_t length);
+
+extern struct netif g_am79c973_netif;
+err_t am79c973_netif_init(struct netif *netif);
+
+#define ETHERTYPE_ARP  0x0806
+#define ETHERTYPE_IPV4 0x0800
+
+#define ARP_OP_REQUEST 1
+#define ARP_OP_REPLY   2
+
+#define IP_PROTO_ICMP 1
