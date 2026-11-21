@@ -300,7 +300,7 @@ Partition* find_boot_partition(boot_info_t* boot_info) {
         size_t sector_size = (d->atapi == 1) ? 2048 : 100;
         uint64_t target_lba = (d->atapi == 1) ? 16 : p->start_lba;
 
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
         disk_read(p->drive_index, target_lba, 1, (uint64_t)buf);
 
@@ -881,7 +881,7 @@ void draw_about_os_content(const window_t* win, int bx, int by, int bw, int bh) 
 
     draw_window_rect(win, 0, 0, win->width, win->height, 0xFF, 0xFF, 0xFF, 0xFF);
 
-    win_printf(win, 20, 20, 0x80, 0x00, 0x00, 0xFF, "OrangeOS Alpha 1.3 (Build %d, %s)", ORANGEOS_BUILD, ORANGEOS_BUILD_DATE);
+    win_printf(win, 20, 20, 0x80, 0x00, 0x00, 0xFF, "OrangeOS Alpha 1.4 (Build %d, %s)", ORANGEOS_BUILD, ORANGEOS_BUILD_DATE);
     draw_window_text(win, "Copyright(C) Alexander Volokhov, 2023-2026", 20, 35, 0x00, 0x00, 0x00, 0xFF);
 
     draw_window_button(win, 0, 0, &btn_ok);
@@ -1054,7 +1054,7 @@ void LoadBackground(int disk_id) {
     if (res <= 0 || background_file == 0) {
         asm volatile("cli");
         kprintf(0, 0, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS could not start because the following file is missing or corrupt:\n%s\nPlease re-install a copy of the above file.", background_file_name);
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
     
@@ -1063,7 +1063,7 @@ void LoadBackground(int disk_id) {
     if(status != 0) {
         asm volatile("cli");
         kprintf(0, 0, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS could not start because the following file is missing or corrupt:\n%s\nPlease re-install a copy of the above file.", background_file_name);
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
 
@@ -1082,7 +1082,7 @@ void LoadFont(int disk_id) {
     if (res <= 0 || true_type_font_system_file == 0) {
         asm volatile("cli");
         kprintf(0, 0, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS could not start because the following file is missing or corrupt:\n%s\nPlease re-install a copy of the above file.", font_file_name);
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
     
@@ -1091,7 +1091,7 @@ void LoadFont(int disk_id) {
     if(status != 0) {
         asm volatile("cli");
         kprintf(0, 0, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS could not start because the following file is missing or corrupt:\n%s\nPlease re-install a copy of the above file.", font_file_name);
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
 
@@ -1298,7 +1298,7 @@ void acpi_os_shutdown()
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(15, 15, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is shutting down...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     stop_all_other_cores();
     if(net_status != 0) {
@@ -1311,7 +1311,7 @@ void acpi_os_shutdown()
     if(acpi_status != 0) {
         kprintf(15, 30, 0xFF, 0xFF, 0xFF, 0xFF, "AcpiEnterSleepStatePrep error: %d", acpi_status);
         kprintf(15, 45, 0xFF, 0xFF, 0xFF, 0xFF, "It is now safe to turn off your computer");
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
 
@@ -1319,7 +1319,7 @@ void acpi_os_shutdown()
     if(acpi_status != 0) {
         kprintf(15, 30, 0xFF, 0xFF, 0xFF, 0xFF, "AcpiDisableAllGpes error: %d", acpi_status);
         kprintf(15, 45, 0xFF, 0xFF, 0xFF, 0xFF, "It is now safe to turn off your computer");
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
 
@@ -1327,12 +1327,12 @@ void acpi_os_shutdown()
     if(acpi_status != 0) {
         kprintf(15, 30, 0xFF, 0xFF, 0xFF, 0xFF, "AcpiEnterSleepState error: %d", acpi_status);
         kprintf(15, 45, 0xFF, 0xFF, 0xFF, 0xFF, "It is now safe to turn off your computer");
-        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+        flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
         Hold();
     }
 
     kprintf(15, 30, 0xFF, 0xFF, 0xFF, 0xFF, "It is now safe to turn off your computer");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
     Hold();
 
     while (1) {
@@ -1756,13 +1756,13 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "Calibrating Local APIC Timer...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     calibrate_lapic_timer();
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(340, 550, 0xFF, 0xFF, 0xFF, 0xFF, "Detecting CPU...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     g_sys_info.cpu.frequency_hz = detect_cpu_frequency();
     g_sys_info.cpu.frequency_mhz = g_sys_info.cpu.frequency_hz / 1000000;
@@ -1770,7 +1770,7 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(330, 550, 0xFF, 0xFF, 0xFF, 0xFF, "Scanning SMBIOS...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     init_smbios();
 
@@ -1778,25 +1778,25 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(320, 550, 0xFF, 0xFF, 0xFF, 0xFF, "Initializing Multiprocessing (SMP)...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     init_logical_processors();
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is checking for: SATA Devices...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     init_ahci();
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is checking for: IDE Devices...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     init_ata_dma();
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is checking for: NVMe Devices...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     int status = init_nvme();
     if(status != 0) {
@@ -1818,7 +1818,7 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is checking for: USB Devices...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     pci_device_t* xhci_controller = find_xhci_controller();
     if(xhci_controller != 0) {
@@ -1853,7 +1853,7 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is initializes the disk subsystem...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     disk_cache_init();
 
@@ -1863,13 +1863,13 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(290, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is initializes the partition subsystem...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     partition_scan_all_drives();
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(290, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is initializes the audio subsystem...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     /*int hd_status = init_hdaudio();
     if(hd_status == 1) {
@@ -1883,7 +1883,7 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is initializes the network card...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     net_status = init_am79c973(&am73c973_device);
     if(net_status != 0) {
@@ -1923,7 +1923,7 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(310, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is initializes the ACPI...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     AcpiDbgLayer = 0x0001FFFF;
     AcpiDbgLevel = 0x0000001F | 0x00000001;
@@ -1955,7 +1955,7 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(290, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is trying to find a boot partition...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
     
     Partition* bootPartition = find_boot_partition(boot_info);
 
@@ -1973,13 +1973,13 @@ void KiInitializeKernel() {
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is loading: BACK_S.BMP...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     LoadBackground(bootPartition->drive_index);
 
     draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x00, 0x00, 0x00, 0xFF);
     kprintf(300, 550, 0xFF, 0xFF, 0xFF, 0xFF, "OrangeOS is loading: INTER.TTF...");
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH , SCREEN_HEIGHT);
 
     LoadFont(bootPartition->drive_index);
 

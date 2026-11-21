@@ -3,6 +3,8 @@ MASTER_PIC_DATA equ 0x21
 SLAVE_PIC_CMD   equ 0xA0
 SLAVE_PIC_DATA  equ 0xA1
 
+extrn flip_buffers
+
 use64
 
 section '.data' writeable align 16
@@ -67,8 +69,7 @@ ret
 
 clear_screen:
 
-mov rsi, 0
-mov esi, [lfb_buffer_addr]
+mov rsi, [lfb_buffer_addr]
 
 mov eax, 480000
 
@@ -870,10 +871,10 @@ call draw_text
 
 mov rdi, 0
 mov rsi, 0
-mov edi, dword [lfb_mouse_addr]
-mov esi, dword [lfb_buffer_addr]
-mov rdx, 480000
-
+mov rdi, [lfb_mouse_addr]
+mov rsi, [lfb_buffer_addr]
+mov rdx, 800
+mov rcx, 600
 call flip_buffers
 
 hlt

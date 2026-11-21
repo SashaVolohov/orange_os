@@ -508,9 +508,12 @@ gather_vbe_modes:
     mov [di + 6], al                 
 
     mov eax, [tmp_mode_info + 40]    ; LFB
-    mov [di + 7], eax                
+    mov [di + 7], eax
 
-    add di, 11
+    mov ax, [tmp_mode_info + 10h] ; Pixels Per Line
+    mov [di+11], ax
+
+    add di, 13
     inc cx
 
 .next_id:

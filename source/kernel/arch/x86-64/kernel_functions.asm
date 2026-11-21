@@ -28,7 +28,6 @@ public update_status_bar
 public getch
 
 public sleep_ms
-public flip_buffers
 
 public spin_lock
 public spin_unlock
@@ -123,110 +122,6 @@ draw_pixel:
     pop rbx
     pop rax
     ret
-
-draw_mouse_pixel: ; r15d - x, r14d - y, cl - R, bh - G, bl - B, ch - alpha
-
-push rsi
-push rax
-push r8
-push rax
-push rdx
-
-mov ax, [vbe_hor_size]
-sub ax, 1
-cmp r15w, ax
-jae .exit
-
-mov ax, [vbe_ver_size]
-sub ax, 1
-cmp r14w, ax
-jae .exit
-
-mov rsi, 0
-mov esi, [lfb_mouse_addr]
-
-mov rax, 0
-mov eax, r14d
-mov r8, 0
-mov r8w, [vbe_hor_size]
-mul r8d
-
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov rax, 0
-mov eax, r15d
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov [esi], bl
-mov [esi+1], bh
-mov [esi+2], cl
-mov [esi+3], ch
-
-.exit:
-
-pop rdx
-pop rax
-pop r8
-pop rax
-pop rsi
-
-ret
-
-read_pixel: ; r15d - x, r14d - y. Output: cl - R, bh - G, bl - B, ch - alpha
-
-push rsi
-push rax
-push r8
-
-mov ax, [vbe_hor_size]
-sub ax, 1
-cmp r15w, ax
-jae .exit
-
-mov ax, [vbe_ver_size]
-sub ax, 1
-cmp r14w, ax
-jae .exit
-
-mov rsi, 0
-mov esi, [lfb_mouse_addr]
-
-mov rax, 0
-mov eax, r14d
-mov r8, 0
-mov r8w, [vbe_hor_size]
-mul r8d
-
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov rax, 0
-mov eax, r15d
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov bl, [esi]
-mov bh, [esi+1]
-mov cl, [esi+2]
-mov ch, [esi+3]
-
-.exit:
-
-pop r8
-pop rax
-pop rsi
-
-ret
 
 draw_symbol: ; rdx - pointer to symbol, r15d - x, r14d - y, cl - R, bh - G, bl - B, ch - alpha
 
@@ -1182,16 +1077,6 @@ sysretq
 .invalid_syscall:
     mov rax, -1
 jmp .exit_syscall
-
-; rdi = dest_front
-; rsi = src_back
-; rdx = dwords_count
-
-flip_buffers:
-    cld
-    mov rcx, rdx
-    rep movsd
-ret
 
 ; RDI = lock addr
 spin_lock:

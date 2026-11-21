@@ -104,8 +104,8 @@ typedef struct __attribute__((packed)) {
 #define BCD_TO_BIN(bcd) ((((bcd) & 0xF0) >> 4) * 10 + ((bcd) & 0x0F))
 
 extern uint32_t* fb_front_buffer;
-extern uint32_t lfb_buffer_addr;
-extern uint32_t lfb_mouse_addr;
+extern uint64_t lfb_buffer_addr;
+extern uint64_t lfb_mouse_addr;
 
 extern uint16_t vbe_hor_size;
 extern uint16_t vbe_ver_size;
@@ -114,7 +114,7 @@ void set_pixel(int32_t x, int32_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 void set_window_pixel(const window_t* win, int32_t x, int32_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 void draw_window_rect(const window_t* win, int x, int y, int width, int height, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
-extern void flip_buffers(uint32_t* dest_front, uint32_t* src_back, uint64_t dwords_count);
+void flip_buffers(uint32_t* front, uint32_t* back, uint32_t width, uint32_t height);
 
 extern uint8_t transparency_gui;
 

@@ -104,12 +104,13 @@ void mouse_settings_content(const window_t* win, int click_x, int click_y, int i
 
         for (uint32_t i = 0; i < boot_info->vbe_modes_count; i++) {
 
-            uint8_t* entry = raw_bytes + (i * 11);
+            uint8_t* entry = raw_bytes + (i * 13);
             uint16_t mode_id               = *(uint16_t*)(entry + 0);
             uint16_t width                 = *(uint16_t*)(entry + 2);
             uint16_t height                = *(uint16_t*)(entry + 4);
             uint8_t  bpp                   = *(uint8_t*) (entry + 6);
             uint32_t physical_base_pointer = *(uint32_t*)(entry + 7);
+            uint16_t pixels_per_line = *(uint16_t*)(entry + 11);
 
             if (mode_id < 0x100 || bpp != 32 || mode_id >= 0x200) {
                 continue;
@@ -117,6 +118,7 @@ void mouse_settings_content(const window_t* win, int click_x, int click_y, int i
 
             if(selected_settings_id == internal_id) {
                 change_screen_resolution(mode_id, width, height, physical_base_pointer);
+                boot_info->vbe_pitch = pixels_per_line;
                 break;
             }
 
@@ -143,7 +145,7 @@ void draw_settings_content(const window_t* win, int bx, int by, int bw, int bh) 
 
     for (uint32_t i = 0; i < boot_info->vbe_modes_count; i++) {
 
-        uint8_t* entry = raw_bytes + (i * 11);
+        uint8_t* entry = raw_bytes + (i * 13);
         uint16_t mode_id               = *(uint16_t*)(entry + 0);
         uint16_t width                 = *(uint16_t*)(entry + 2);
         uint16_t height                = *(uint16_t*)(entry + 4);

@@ -610,6 +610,48 @@ void draw_mouse_cursor() {
     }
 }
 
+void flip_buffers(uint32_t* front, uint32_t* back, uint32_t width, uint32_t height) {
+    uint32_t row_bytes = width * 4;
+
+    if (boot_info->vbe_pitch == row_bytes) {
+        uint64_t total_qwords = ((uint64_t)row_bytes * height) / 8;
+        __asm__ __volatile__(
+            "cld\n\t"
+            "rep movsq\n\t"
+            : "+D"(front), "+S"(back), "+c"(total_qwords)
+            :
+            : "memory"
+        );
+        return;
+    }
+
+    uint8_t* dst_row = (uint8_t*)front;
+    uint8_t* src_row = (uint8_t*)back;
+    uint32_t qwords_per_row = width / 2;
+    uint32_t rem_dword = width & 1;
+
+    for (uint32_t y = 0; y < height; y++) {
+        uint64_t* d = (uint64_t*)dst_row;
+        uint64_t* s = (uint64_t*)src_row;
+        uint64_t cnt = qwords_per_row;
+
+        __asm__ __volatile__(
+            "cld\n\t"
+            "rep movsq\n\t"
+            : "+D"(d), "+S"(s), "+c"(cnt)
+            :
+            : "memory"
+        );
+
+        if (rem_dword) {
+            *(uint32_t*)d = *(uint32_t*)s;
+        }
+
+        dst_row += boot_info->vbe_pitch;
+        src_row += row_bytes;
+    }
+}
+
 __attribute__((target("sse,sse2,mmx")))
 void draw_all_windows()
 {
@@ -644,7 +686,7 @@ void draw_all_windows()
 
     draw_mouse_cursor();
 
-    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH * SCREEN_HEIGHT);
+    flip_buffers(fb_front_buffer, fb_back_buffer, SCREEN_WIDTH, SCREEN_HEIGHT);
 }
 
 __attribute__((target("sse,sse2,mmx")))

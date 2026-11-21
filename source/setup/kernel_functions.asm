@@ -68,44 +68,6 @@ pop rsi
 
 ret
 
-read_pixel: ; r15d - x, r14d - y. Output: cl - R, bh - G, bl - B, ch - alpha
-
-push rsi
-push rax
-push r8
-
-mov rsi, 0
-mov esi, [lfb_buffer_addr]
-
-mov rax, 0
-mov eax, r14d
-mov r8, 0
-mov r8w, [vbe_hor_size]
-mul r8d
-
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov rax, 0
-mov eax, r15d
-mov r8d, 4
-mul r8d
-
-add esi, eax
-
-mov bl, [esi]
-mov bh, [esi+1]
-mov cl, [esi+2]
-mov ch, [esi+3]
-
-pop r8
-pop rax
-pop rsi
-
-ret
-
 draw_symbol: ; rdx - pointer to symbol, r15d - x, r14d - y, cl - R, bh - G, bl - B, ch - alpha
 
 push rax

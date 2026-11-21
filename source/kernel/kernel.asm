@@ -54,8 +54,8 @@ mov [pt_begin], rbx
 mov [pt_end], rcx
 mov [ptv_end], rdx
 mov [bitmap_end], r8
-mov [lfb_buffer_addr], r9d
-mov [lfb_mouse_addr], r9d
+mov [lfb_buffer_addr], r9
+mov [lfb_mouse_addr], r9
 mov [lapic_base_addr], r10
 mov [timer_ticks], r11
 mov [process_table_ptr], r12
@@ -72,8 +72,7 @@ mov [vbe_ver_size], ax
 mov al, byte [rbx+4]; Color depth
 mov [vbe_color_depth], al
 
-mov rax, 0
-mov eax, [lfb_buffer_addr]
+mov rax, [lfb_buffer_addr]
 mov [fb_front_buffer], rax
 
 mov dword [current_task_index], 1
@@ -706,8 +705,8 @@ vbe_trampoline_end:
 file_addr dq 0
 
 loading_drive db 0
-lfb_buffer_addr dd 0
-lfb_mouse_addr dd 0
+lfb_buffer_addr dq 0
+lfb_mouse_addr dq 0
 fb_front_buffer dq 0
 
 current_progress dq 0

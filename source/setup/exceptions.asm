@@ -2634,7 +2634,7 @@ init_pic:
 
     mov al, 00000000b
     out MASTER_PIC_DATA, al
-    mov al, 11101110b
+    mov al, 00000000b
     out SLAVE_PIC_DATA, al
 ret
 

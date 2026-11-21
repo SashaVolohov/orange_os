@@ -45,7 +45,6 @@ call init_rtc
 
 mov rsi, 0
 mov esi, [lfb_buffer_addr]
-
 mov eax, 480000
 
 gui_screen:

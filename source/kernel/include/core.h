@@ -193,8 +193,8 @@ typedef struct __attribute__((packed)) {
     uint16_t height;
     uint8_t  bpp;
     uint32_t physical_base_pointer;
+    uint16_t pixels_per_line;
 } boot_vbe_mode_t;
-
 
 typedef struct {
     uint16_t vbe_hor_size;

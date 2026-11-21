@@ -856,8 +856,8 @@ kheap_init:
     mov [kheap_current_end], rbx
 
     mov rbx, KHEAP_START
-    mov qword [rbx], 16368  ; size = 16368
-    mov qword [rbx + 8], 1  ; is_free = 1 (блок свободен)
+    mov qword [rbx], 16368
+    mov qword [rbx + 8], 1
 
     pop rbx
     pop rcx

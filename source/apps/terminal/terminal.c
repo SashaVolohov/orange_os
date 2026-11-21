@@ -630,7 +630,7 @@ void open_terminal_app() {
     term_input_len = 0;
     term_input[0] = '\0';
 
-    term_printf("OrangeOS Version Alpha 1.3 (Build %d, %s)", ORANGEOS_BUILD, ORANGEOS_BUILD_DATE);
+    term_printf("OrangeOS Version Alpha 1.4 (Build %d, %s)", ORANGEOS_BUILD, ORANGEOS_BUILD_DATE);
 
     char equipment_info[100];
     ksnprintf(equipment_info, 100, "%d System Processors [%d MB Memory] MultiProcessor Kernel", boot_info->cpu_count, mb_memory);

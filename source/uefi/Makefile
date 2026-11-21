@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -target x86_64-unknown-windows -fuse-ld=lld -ffreestanding -fno-stack-protector -mno-red-zone -fshort-wchar -nostdlib -Wl,-subsystem:efi_application -Wl,-entry:efi_main
+CFLAGS = -target x86_64-unknown-windows -mno-sse -mno-avx -fuse-ld=lld -ffreestanding -fno-stack-protector -mno-red-zone -fshort-wchar -nostdlib -Wl,-subsystem:efi_application -Wl,-entry:efi_main
 
 TARGET = BOOTX64.EFI
 
